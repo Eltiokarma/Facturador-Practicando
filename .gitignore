@@ -19,6 +19,7 @@ vendor/
 node_modules/
 apps/web/dist/
 apps/web/.vite/
+apps/web/tsconfig.tsbuildinfo
 *.log
 .DS_Store
 
