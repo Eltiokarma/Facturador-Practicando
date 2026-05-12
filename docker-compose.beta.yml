@@ -1,0 +1,14 @@
+# Override para forzar modo beta (homologación SUNAT).
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d
+#
+# La diferencia con prod es solo SUNAT_MODE=beta, que cambia los endpoints
+# a los de homologación. Útil para devs y para usuarios haciendo pruebas.
+
+services:
+  api:
+    environment:
+      SUNAT_MODE: beta
+  motor:
+    environment:
+      SUNAT_MODE: beta

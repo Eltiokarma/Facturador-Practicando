@@ -1,0 +1,37 @@
+# Secrets / runtime
+.env
+.env.local
+.env.*.local
+*.p12
+*.pem
+*.key
+secrets/
+certs/
+
+# Go
+apps/api/bin/
+apps/api/tmp/
+*.test
+*.out
+vendor/
+
+# Node / PWA
+node_modules/
+apps/web/dist/
+apps/web/.vite/
+*.log
+.DS_Store
+
+# PHP / motor
+apps/motor/vendor/
+apps/motor/.phpunit.result.cache
+apps/motor/storage/logs/*
+apps/motor/storage/cache/*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Postgres / Redis volumes (cuando compose monta locales)
+data/

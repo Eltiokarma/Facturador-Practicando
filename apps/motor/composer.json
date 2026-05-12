@@ -1,0 +1,27 @@
+{
+    "name": "eltiokarma/facturador-motor",
+    "description": "Microservicio de facturación electrónica SUNAT (UBL 2.1 + XAdES + SOAP) basado en Greenter.",
+    "type": "project",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "php": ">=8.2",
+        "ext-soap": "*",
+        "ext-openssl": "*",
+        "ext-zip": "*",
+        "ext-dom": "*",
+        "greenter/lite": "^5.0",
+        "slim/slim": "^4.13",
+        "slim/psr7": "^1.6",
+        "php-di/php-di": "^7.0",
+        "monolog/monolog": "^3.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Facturador\\Motor\\": "src/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    }
+}
