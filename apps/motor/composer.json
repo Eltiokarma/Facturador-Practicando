@@ -5,15 +5,15 @@
     "license": "AGPL-3.0-or-later",
     "require": {
         "php": ">=8.2",
-        "ext-soap": "*",
-        "ext-openssl": "*",
-        "ext-zip": "*",
         "ext-dom": "*",
-        "greenter/lite": "^5.0",
-        "slim/slim": "^4.13",
-        "slim/psr7": "^1.6",
+        "ext-openssl": "*",
+        "ext-soap": "*",
+        "ext-zip": "*",
+        "greenter/lite": "^5.2",
+        "monolog/monolog": "^3.5",
         "php-di/php-di": "^7.0",
-        "monolog/monolog": "^3.5"
+        "slim/psr7": "^1.6",
+        "slim/slim": "^4.13"
     },
     "autoload": {
         "psr-4": {

@@ -25,6 +25,7 @@ type Config struct {
 	PostgresDSN     string
 	RedisAddr       string
 	MotorURL        string
+	DataDir         string
 }
 
 func Load() (*Config, error) {
@@ -34,6 +35,7 @@ func Load() (*Config, error) {
 		JWTSecret:   os.Getenv("API_JWT_SECRET"),
 		CORSOrigins: splitCSV(getEnv("API_CORS_ORIGINS", "http://localhost:5173")),
 		MotorURL:    getEnv("MOTOR_URL", "http://motor:8000"),
+		DataDir:     getEnv("DATA_DIR", "/app/data"),
 	}
 
 	if c.SunatMode != SunatModeBeta && c.SunatMode != SunatModeProd {

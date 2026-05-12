@@ -13,16 +13,23 @@ import (
 	"github.com/eltiokarma/facturador/apps/api/internal/config"
 )
 
-func NewRouter(cfg *config.Config, logger *slog.Logger) http.Handler {
+type Deps struct {
+	Cfg      *config.Config
+	Logger   *slog.Logger
+	Facturas *FacturasHandler
+	MotorPing func() error
+}
+
+func NewRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(middleware.Timeout(90 * time.Second))
 
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   cfg.CORSOrigins,
+		AllowedOrigins:   d.Cfg.CORSOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},
 		ExposedHeaders:   []string{"X-Request-Id"},
@@ -30,13 +37,14 @@ func NewRouter(cfg *config.Config, logger *slog.Logger) http.Handler {
 		MaxAge:           300,
 	}))
 
-	r.Get("/health", health(cfg))
-	r.Get("/ready", ready(cfg))
+	r.Get("/health", health(d.Cfg))
+	r.Get("/ready", ready(d))
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Post("/facturas", notImplemented("emitir factura"))
-		r.Get("/facturas/{id}", notImplemented("consultar factura"))
-		r.Post("/boletas", notImplemented("emitir boleta"))
+		if d.Facturas != nil {
+			r.Post("/facturas", d.Facturas.Emitir)
+			r.Post("/boletas", d.Facturas.Emitir) // mismo handler, distingue por tipo en el payload
+		}
 		r.Post("/notas-credito", notImplemented("emitir nota de crédito"))
 		r.Post("/notas-debito", notImplemented("emitir nota de débito"))
 	})
@@ -60,10 +68,21 @@ func health(cfg *config.Config) http.HandlerFunc {
 	}
 }
 
-func ready(_ *config.Config) http.HandlerFunc {
+func ready(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// TODO: chequear postgres, redis y motor.
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		motorErr := ""
+		if d.MotorPing != nil {
+			if err := d.MotorPing(); err != nil {
+				motorErr = err.Error()
+			}
+		}
+		status := http.StatusOK
+		body := map[string]string{"motor": "ok"}
+		if motorErr != "" {
+			status = http.StatusServiceUnavailable
+			body["motor"] = motorErr
+		}
+		writeJSON(w, status, body)
 	}
 }
 

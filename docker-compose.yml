@@ -77,10 +77,25 @@ services:
       REDIS_PORT: 6379
       MOTOR_URL: ${MOTOR_URL:-http://motor:8000}
       SUNAT_MODE: ${SUNAT_MODE:-beta}
+      # Tenant (MVP single-tenant via env)
+      TENANT_RUC: ${TENANT_RUC}
+      TENANT_RAZON_SOCIAL: ${TENANT_RAZON_SOCIAL}
+      TENANT_NOMBRE_COMERCIAL: ${TENANT_NOMBRE_COMERCIAL}
+      TENANT_DIRECCION_FISCAL: ${TENANT_DIRECCION_FISCAL}
+      TENANT_UBIGEO: ${TENANT_UBIGEO}
+      TENANT_DEPARTAMENTO: ${TENANT_DEPARTAMENTO}
+      TENANT_PROVINCIA: ${TENANT_PROVINCIA}
+      TENANT_DISTRITO: ${TENANT_DISTRITO}
+      TENANT_USUARIO_SOL: ${TENANT_USUARIO_SOL}
+      TENANT_CLAVE_SOL: ${TENANT_CLAVE_SOL}
+      CERT_PATH: ${CERT_PATH:-/app/certs/cert.p12}
+      CERT_PASSPHRASE: ${CERT_PASSPHRASE}
+      DATA_DIR: /app/data
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:
       - ./certs:/app/certs:ro
+      - ./data:/app/data
     networks:
       - facturador-net
 

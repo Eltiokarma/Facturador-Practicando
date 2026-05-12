@@ -10,8 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/eltiokarma/facturador/apps/api/internal/cert"
 	"github.com/eltiokarma/facturador/apps/api/internal/config"
 	httpapi "github.com/eltiokarma/facturador/apps/api/internal/http"
+	"github.com/eltiokarma/facturador/apps/api/internal/motor"
+	"github.com/eltiokarma/facturador/apps/api/internal/storage"
+	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
 )
 
 func main() {
@@ -24,17 +28,61 @@ func main() {
 		os.Exit(1)
 	}
 
+	ten, err := tenant.FromEnv()
+	if err != nil {
+		logger.Error("config del tenant inválida", "err", err)
+		os.Exit(1)
+	}
+
+	mat, err := cert.Load(ten.CertPath, ten.CertPassphrase)
+	if err != nil {
+		logger.Error("no pude cargar el certificado", "err", err, "path", ten.CertPath)
+		os.Exit(1)
+	}
+	// Limpiar passphrase de memoria del struct: ya descifró, no la necesitamos más.
+	ten.CertPassphrase = ""
+	logger.Info("certificado cargado en memoria", "path", ten.CertPath)
+
+	mot := motor.New(cfg.MotorURL)
+	st, err := storage.New(cfg.DataDir)
+	if err != nil {
+		logger.Error("no pude inicializar storage", "err", err, "dir", cfg.DataDir)
+		os.Exit(1)
+	}
+
+	handler := &httpapi.FacturasHandler{
+		Cfg:    cfg,
+		Tenant: ten,
+		Cert:   mat,
+		Motor:  mot,
+		Store:  st,
+		Logger: logger,
+	}
+
+	router := httpapi.NewRouter(httpapi.Deps{
+		Cfg:      cfg,
+		Logger:   logger,
+		Facturas: handler,
+		MotorPing: func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			return mot.Health(ctx)
+		},
+	})
+
 	logger.Info("arrancando facturador API",
 		"sunat_mode", cfg.SunatMode,
 		"port", cfg.Port,
+		"tenant_ruc", ten.RUC,
+		"motor_url", cfg.MotorURL,
 	)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           httpapi.NewRouter(cfg, logger),
+		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
+		WriteTimeout:      90 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 

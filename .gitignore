@@ -23,10 +23,14 @@ apps/web/.vite/
 .DS_Store
 
 # PHP / motor
+vendor/
 apps/motor/vendor/
 apps/motor/.phpunit.result.cache
 apps/motor/storage/logs/*
 apps/motor/storage/cache/*
+
+# Datos emitidos (XML firmados, CDR, registros) — son del usuario, nunca del repo
+data/
 
 # IDE
 .idea/
