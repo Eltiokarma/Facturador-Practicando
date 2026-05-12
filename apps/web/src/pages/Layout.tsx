@@ -1,6 +1,27 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { TenantSwitcher } from "../components/TenantSwitcher";
+
+function DemoBanner() {
+  const { user, tenants } = useAuth();
+  if (!user) return null;
+  const current = tenants.find((t) => t.id === user.tenant_id);
+  if (!current?.demo_mode) return null;
+  return (
+    <div className="bg-amber-100 border-b border-amber-200 text-amber-900 text-sm px-6 py-2 flex items-center justify-between">
+      <div>
+        <span className="font-semibold uppercase tracking-wide text-xs px-1.5 py-0.5 rounded bg-amber-800 text-amber-100 mr-2">
+          DEMO
+        </span>
+        Esta empresa está en modo DEMO. Los comprobantes <strong>NO</strong> se
+        envían a SUNAT y NO tienen valor legal.
+      </div>
+      <Link to="/configuracion" className="text-amber-900 underline hover:no-underline text-xs">
+        Salir de modo DEMO →
+      </Link>
+    </div>
+  );
+}
 
 const items = [
   { to: "/dashboard", label: "Resumen", icon: "📊" },
@@ -67,6 +88,7 @@ export function Layout() {
       </aside>
 
       <main className="flex-1 min-w-0 overflow-x-hidden">
+        <DemoBanner />
         <div className="max-w-5xl mx-auto px-8 py-10">
           <Outlet />
         </div>

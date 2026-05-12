@@ -14,6 +14,7 @@ type TenantConfig = {
   usuario_sol?: string;
   cert_path?: string;
   has_cert?: boolean;
+  demo_mode: boolean;
 };
 
 export function Configuracion() {
@@ -54,9 +55,11 @@ export function Configuracion() {
           direccion_fiscal: t.direccion_fiscal,
           ubigeo: t.ubigeo,
           sunat_mode: t.sunat_mode,
+          demo_mode: t.demo_mode,
         },
       });
-      toast.success("Datos guardados. Algunos cambios requieren reiniciar el servicio.");
+      toast.success("Datos guardados.");
+      window.location.reload();
     } catch (e: any) {
       toast.error(e?.body?.detalle || "No se pudo guardar");
     } finally {
@@ -100,13 +103,13 @@ export function Configuracion() {
         </div>
       )}
 
-      <div className="rounded-lg p-4 text-sm bg-slate-100 border border-slate-200 text-slate-700">
-        <strong>Aviso:</strong> los cambios en los datos del emisor y las credenciales SOL
-        se guardan inmediatamente, pero <strong>requieren reiniciar el servicio</strong> para que
-        las emisiones futuras los usen. El certificado <code>.p12</code> sigue cargándose desde
-        el archivo en <code>./certs/cert.p12</code> al arrancar — subirlo por la UI llega en
-        la próxima versión.
-      </div>
+      {t.demo_mode && (
+        <div className="rounded-lg p-4 text-sm bg-amber-50 border border-amber-200 text-amber-900">
+          <strong>Esta empresa está en modo DEMO.</strong> Los comprobantes se
+          simulan localmente y no llegan a SUNAT. Cuando tengas tu certificado
+          <code>.p12</code> y credenciales SOL configurados, podés desactivarlo abajo.
+        </div>
+      )}
 
       <section className="card p-6">
         <h2 className="text-lg font-medium text-slate-900 mb-1">Identidad de la empresa</h2>
@@ -175,6 +178,25 @@ export function Configuracion() {
               onChange={(e) => setT({ ...t, ubigeo: e.target.value.replace(/\D/g, "") })}
               disabled={!esDueno}
             />
+          </div>
+          <div className="pt-3 border-t border-slate-100">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={t.demo_mode}
+                onChange={(e) => setT({ ...t, demo_mode: e.target.checked })}
+                disabled={!esDueno}
+              />
+              <span>
+                <span className="text-sm font-medium text-slate-900 block">Modo DEMO</span>
+                <span className="text-xs text-slate-500">
+                  Las emisiones se simulan localmente sin enviarse a SUNAT. Ideal
+                  para explorar el sistema o probar el flujo sin certificado real.
+                  Para desactivarlo, primero subí el .p12 abajo.
+                </span>
+              </span>
+            </label>
           </div>
           {esDueno && (
             <div className="flex justify-end pt-2">

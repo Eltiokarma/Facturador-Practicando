@@ -31,6 +31,7 @@ type tenantDTO struct {
 	UsuarioSOL      string    `json:"usuario_sol,omitempty"`
 	CertPath        string    `json:"cert_path,omitempty"`
 	HasCert         bool      `json:"has_cert"`
+	DemoMode        bool      `json:"demo_mode"`
 }
 
 func (h *TenantHandler) toDTO(r *tenant.Record) tenantDTO {
@@ -39,7 +40,7 @@ func (h *TenantHandler) toDTO(r *tenant.Record) tenantDTO {
 		NombreComercial: r.NombreComercial, DireccionFiscal: r.DireccionFiscal,
 		Ubigeo: r.Ubigeo, SunatMode: r.SunatMode,
 		UsuarioSOL: r.UsuarioSOL, CertPath: r.CertPath,
-		HasCert: h.Certs.HasCert(r.ID),
+		HasCert: h.Certs.HasCert(r.ID), DemoMode: r.DemoMode,
 	}
 }
 
@@ -63,6 +64,7 @@ type updatePerfilReq struct {
 	DireccionFiscal string `json:"direccion_fiscal"`
 	Ubigeo          string `json:"ubigeo"`
 	SunatMode       string `json:"sunat_mode"`
+	DemoMode        *bool  `json:"demo_mode,omitempty"`
 }
 
 func (h *TenantHandler) UpdatePerfil(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +91,20 @@ func (h *TenantHandler) UpdatePerfil(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validacion", "detalle": err.Error()})
 		return
 	}
-	// Refrescar caché para que los próximos requests usen los nuevos datos.
+	// Si pidieron cambiar demo_mode, validar que si lo desactivan haya cert.
+	if req.DemoMode != nil {
+		if !*req.DemoMode && !h.Certs.HasCert(tid) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error":   "no_cert",
+				"detalle": "no se puede salir de modo DEMO sin certificado .p12 cargado",
+			})
+			return
+		}
+		if err := h.Tenants.Store().SetDemoMode(r.Context(), tid, *req.DemoMode); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+			return
+		}
+	}
 	if _, err := h.Tenants.Refresh(r.Context(), tid); err != nil {
 		h.Logger.Warn("refresh tenant tras update", "err", err)
 	}

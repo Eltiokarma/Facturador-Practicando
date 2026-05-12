@@ -49,6 +49,16 @@ func (h *ResumenHandler) HandleEnviar(ctx context.Context, t *asynq.Task) error 
 		_ = h.Resumenes.MarcarError(ctx, p.TenantID, p.ResumenID, "tenant no encontrado")
 		return err
 	}
+	// Modo demo: simular aceptación inmediata sin tocar SUNAT.
+	if ten.DemoMode {
+		if err := h.Resumenes.AplicarResultado(ctx, p.TenantID, p.ResumenID, "aceptado", "0",
+			"Modo DEMO — SUNAT no fue contactado.", ""); err != nil {
+			return err
+		}
+		log.Info("resumen simulado en modo demo")
+		return nil
+	}
+
 	mat, err := h.Certs.Get(p.TenantID)
 	if err != nil {
 		_ = h.Resumenes.MarcarError(ctx, p.TenantID, p.ResumenID, "certificado no disponible")

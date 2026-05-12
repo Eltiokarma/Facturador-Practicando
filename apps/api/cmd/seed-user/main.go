@@ -66,9 +66,16 @@ func main() {
 		die("listar tenants", err)
 	}
 	if len(tenants) == 0 {
+		// Si hay TENANT_* en env, los usa. Si no, crea una empresa demo
+		// que el usuario puede renombrar después desde la UI.
 		in := tenant.FromEnv()
 		if in == nil {
-			die("no hay tenants", fmt.Errorf("definí TENANT_RUC y TENANT_RAZON_SOCIAL en el .env, o creá el tenant desde la UI primero"))
+			in = &tenant.BootstrapInput{
+				RUC:         "20000000001",
+				RazonSocial: "EMPRESA DEMO",
+			}
+			fmt.Fprintln(os.Stderr, "⚠ No hay tenants ni TENANT_* en env: creando empresa DEMO con RUC 20000000001.")
+			fmt.Fprintln(os.Stderr, "  Después podés renombrarla desde Configuración o crear otra desde '+ Nueva empresa'.")
 		}
 		id, err := store.Create(ctx, tenant.CreateInput{
 			RUC: in.RUC, RazonSocial: in.RazonSocial,

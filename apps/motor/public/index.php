@@ -4,6 +4,7 @@ declare(strict_types=1);
 require __DIR__ . '/../vendor/autoload.php';
 
 use Facturador\Motor\Emisor;
+use Facturador\Motor\Nota;
 use Facturador\Motor\Resumen;
 use Slim\Factory\AppFactory;
 use Psr\Http\Message\ResponseInterface as Response;
@@ -38,8 +39,13 @@ $app->post('/emitir', function (Request $request, Response $response): Response 
         return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
     }
 
+    $tipo = (string)(($payload['comprobante'] ?? [])['tipo'] ?? '');
     try {
-        $resultado = (new Emisor())->emitir($payload);
+        if ($tipo === '07' || $tipo === '08') {
+            $resultado = (new Nota())->emitir($payload);
+        } else {
+            $resultado = (new Emisor())->emitir($payload);
+        }
     } catch (\Throwable $e) {
         $resultado = [
             'estado' => 'error',

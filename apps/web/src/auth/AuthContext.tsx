@@ -22,6 +22,7 @@ export type TenantSummary = {
   razon_social: string;
   sunat_mode: "beta" | "prod";
   has_cert: boolean;
+  demo_mode: boolean;
 };
 
 type AuthState = {

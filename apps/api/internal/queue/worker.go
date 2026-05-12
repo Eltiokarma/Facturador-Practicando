@@ -51,13 +51,26 @@ func (h *EmitHandler) Handle(ctx context.Context, t *asynq.Task) error {
 		_ = h.Comprobantes.MarcarError(ctx, p.TenantID, p.ComprobanteID, "tenant no encontrado")
 		return err
 	}
+	// Modo demo: simular respuesta de SUNAT sin tocar el motor.
+	if ten.DemoMode {
+		res := comprobantes.Resultado{
+			Estado:  "aceptado",
+			Codigo:  "0",
+			Mensaje: "Modo DEMO — SUNAT no fue contactado. El comprobante NO tiene valor legal.",
+			HashCPE: "DEMO-" + p.ComprobanteID.String()[:8],
+		}
+		if err := h.Comprobantes.AplicarResultado(ctx, p.TenantID, p.ComprobanteID, res, d.Tipo, d.Serie, d.Correlativo); err != nil {
+			return err
+		}
+		log.Info("worker: comprobante simulado en modo demo")
+		return nil
+	}
+
 	mat, err := h.Certs.Get(p.TenantID)
 	if err != nil {
-		// Si no hay cert cargado para este tenant, es un error de
-		// configuración: marcar como error pero no reintentar.
 		log.Error("worker: cert no disponible para este tenant", "err", err)
-		_ = h.Comprobantes.MarcarError(ctx, p.TenantID, p.ComprobanteID, "certificado no disponible — subilo desde Configuración")
-		return nil // no devolver error → asynq no reintenta
+		_ = h.Comprobantes.MarcarError(ctx, p.TenantID, p.ComprobanteID, "certificado no disponible — subilo desde Configuración o activá modo DEMO")
+		return nil
 	}
 
 	var pld struct {

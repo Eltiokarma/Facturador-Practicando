@@ -227,6 +227,27 @@ export function ComprobanteDetalle() {
               Descargar CDR (.zip)
             </button>
           </div>
+
+          {(c.tipo === "01" || c.tipo === "03") &&
+            (c.estado === "aceptado" || c.estado === "aceptado_con_obs") && (
+              <div className="mt-6 pt-6 border-t border-slate-200 space-y-2">
+                <p className="text-xs uppercase tracking-wide text-slate-500 font-medium">
+                  Emitir nota sobre este comprobante
+                </p>
+                <Link
+                  to={`/notas/credito?ref=${c.id}`}
+                  className="btn-ghost w-full"
+                >
+                  Nota de crédito
+                </Link>
+                <Link
+                  to={`/notas/debito?ref=${c.id}`}
+                  className="btn-ghost w-full"
+                >
+                  Nota de débito
+                </Link>
+              </div>
+            )}
         </div>
       </section>
 

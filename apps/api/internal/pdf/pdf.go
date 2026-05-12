@@ -49,6 +49,19 @@ func (b *Builder) Render(t *tenant.Record, d *comprobantes.Detalle) ([]byte, err
 	pdf.SetAutoPageBreak(true, 15)
 	pdf.AddPage()
 
+	// Watermark DEMO si corresponde
+	isDemo := t.DemoMode || (len(d.HashCPE) >= 5 && d.HashCPE[:5] == "DEMO-")
+	if isDemo {
+		pdf.SetFont("Helvetica", "B", 80)
+		pdf.SetTextColor(252, 211, 77)
+		pdf.TransformBegin()
+		pdf.TransformRotate(45, 105, 148)
+		pdf.SetXY(20, 130)
+		pdf.CellFormat(170, 30, "DEMO", "", 0, "C", false, 0, "")
+		pdf.TransformEnd()
+		pdf.SetTextColor(15, 23, 42)
+	}
+
 	// ----------------- ENCABEZADO -----------------
 	// Columna izquierda: datos del emisor
 	pdf.SetFont("Helvetica", "B", 13)

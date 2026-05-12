@@ -26,22 +26,34 @@ Facturador electrónico self-hosted multi-RUC para contribuyentes peruanos. Emit
 | `packages/codigos-sunat` | Catálogos SUNAT (por completar) | JSON |
 | `packages/ubl-schemas` | XSDs UBL 2.1 (por completar) | XML |
 
-## Levantar en local (homologación)
+## Levantar en local
+
+### Explorar sin certificado (modo DEMO)
+
+Para conocer el sistema sin necesidad de conseguir certificado SUNAT ni nada más:
 
 ```bash
 cp .env.example .env
-# editar .env: TENANT_RUC, TENANT_RAZON_SOCIAL, CERT_PASSPHRASE, API_JWT_SECRET
-mkdir -p certs data
-cp /donde/tengas/tu-cert.p12 certs/cert.p12
+# editar .env: solo POSTGRES_PASSWORD, API_JWT_SECRET y MASTER_KEY
+# (los tres se generan con:  openssl rand -hex 32)
 
 docker compose -f docker-compose.yml -f docker-compose.beta.yml up -d --build
 
-# crear el primer usuario
 docker compose exec api /app/seed-user \
-    -email=tu@email.com -password=loquesea123 -nombre="Tu Nombre" -rol=dueno
+    -email=tu@email -password=demodemo -nombre="Tu nombre" -rol=dueno
 
-# abrir http://localhost:5173
+# abrir http://localhost:5173 — banner amarillo DEMO arriba
 ```
+
+Las emisiones se simulan localmente. Los PDFs salen con marca de agua DEMO. Guía completa: `docs/explorar-modo-demo.md`.
+
+### Producción / homologación real
+
+Lo mismo de arriba, y después en la UI:
+1. Configuración → completar razón social, dirección, ubigeo.
+2. Configuración → subir el `.p12` y su passphrase.
+3. Configuración → cargar usuario y clave SOL del usuario secundario.
+4. Configuración → destildar "Modo DEMO" y guardar.
 
 Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `docs/manual.pdf`.
 
@@ -62,7 +74,8 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 - [x] Configuración del tenant desde la UI (datos del emisor, modo SUNAT, credenciales SOL cifradas AES-256-GCM).
 - [x] Multi-tenant real con switch en la UI: pertenencias `user_tenants`, selector de empresa en el sidebar, alta de empresas nuevas, switch-tenant que rota tokens JWT.
 - [x] Subir certificado .p12 desde la UI por tenant (un cert por RUC, passphrase cifrada con AES-256-GCM en DB, recarga automática al reiniciar el container).
-- [ ] Notas de crédito y notas de débito.
+- [x] Notas de crédito y notas de débito, con motivo SUNAT (catálogos 09/10), referencia al comprobante original, ítems prellenados.
+- [x] Modo DEMO por tenant: emisiones simuladas localmente sin tocar SUNAT, banner permanente en la UI, watermark "DEMO" en los PDFs. Permite explorar el sistema sin tener cert ni credenciales reales.
 - [ ] Invitar usuarios a tu tenant (compartir acceso con contador / cajero).
 - [ ] PWA offline-first con cola local en IndexedDB.
 - [ ] GRE (obligatoria desde julio 2026).

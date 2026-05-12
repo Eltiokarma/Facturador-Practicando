@@ -54,7 +54,9 @@ export function TenantSwitcher() {
           </div>
           <div className="text-xs text-slate-500 truncate">
             RUC {current?.ruc || "—"}
-            {current?.sunat_mode === "prod" ? (
+            {current?.demo_mode ? (
+              <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 uppercase">demo</span>
+            ) : current?.sunat_mode === "prod" ? (
               <span className="ml-2 text-amber-700">· prod</span>
             ) : (
               <span className="ml-2 text-emerald-700">· beta</span>

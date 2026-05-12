@@ -69,6 +69,8 @@ func NewRouter(d Deps) http.Handler {
 			if d.Facturas != nil {
 				r.Post("/facturas", d.Facturas.Emitir)
 				r.Post("/boletas", d.Facturas.Emitir)
+				r.Post("/notas-credito", d.Facturas.Emitir)
+				r.Post("/notas-debito", d.Facturas.Emitir)
 			}
 			if d.Comprobantes != nil {
 				r.Get("/comprobantes", d.Comprobantes.List)

@@ -20,13 +20,17 @@ type FacturasHandler struct {
 }
 
 type emitirRequest struct {
-	Tipo          string               `json:"tipo"`
-	Serie         string               `json:"serie"`
-	FechaEmision  string               `json:"fecha_emision"`
-	Moneda        string               `json:"moneda"`
-	TipoOperacion string               `json:"tipo_operacion,omitempty"`
-	Receptor      facturacion.Receptor `json:"receptor"`
-	Items         []facturacion.Item   `json:"items"`
+	Tipo              string                  `json:"tipo"`
+	Serie             string                  `json:"serie"`
+	FechaEmision      string                  `json:"fecha_emision"`
+	Moneda            string                  `json:"moneda"`
+	TipoOperacion     string                  `json:"tipo_operacion,omitempty"`
+	Receptor          facturacion.Receptor    `json:"receptor"`
+	Items             []facturacion.Item      `json:"items"`
+	// Solo para notas:
+	Referencia        *facturacion.Referencia `json:"referencia,omitempty"`
+	MotivoCodigo      string                  `json:"motivo_codigo,omitempty"`
+	MotivoDescripcion string                  `json:"motivo_descripcion,omitempty"`
 }
 
 type emitirRespuesta struct {
@@ -54,6 +58,10 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/boletas":
 			req.Tipo = "03"
+		case "/api/v1/notas-credito":
+			req.Tipo = "07"
+		case "/api/v1/notas-debito":
+			req.Tipo = "08"
 		default:
 			req.Tipo = "01"
 		}
@@ -73,6 +81,9 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 		Tipo: req.Tipo, Serie: req.Serie, Correlativo: correlativo,
 		FechaEmision: req.FechaEmision, Moneda: req.Moneda,
 		TipoOperacion: req.TipoOperacion, Receptor: req.Receptor, Items: req.Items,
+		Referencia:        req.Referencia,
+		MotivoCodigo:      req.MotivoCodigo,
+		MotivoDescripcion: req.MotivoDescripcion,
 	}
 	if err := f.Validar(); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validacion", "detalle": err.Error()})
@@ -96,9 +107,18 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 		"items":   itemsToMap(f.Items),
 		"totales": totalesToMap(f.Totales),
 	}
+	if f.Referencia != nil {
+		payloadDoc["referencia"] = map[string]any{
+			"tipo_doc":    f.Referencia.TipoDoc,
+			"serie":       f.Referencia.Serie,
+			"correlativo": f.Referencia.Correlativo,
+		}
+		payloadDoc["motivo_codigo"] = f.MotivoCodigo
+		payloadDoc["motivo_descripcion"] = f.MotivoDescripcion
+	}
 	payloadJSON, _ := json.Marshal(payloadDoc)
 
-	id, err := h.Comprobantes.CreatePendiente(r.Context(), comprobantes.PendienteInput{
+	pendIn := comprobantes.PendienteInput{
 		TenantID:        tenantID,
 		Tipo:            f.Tipo,
 		Serie:           f.Serie,
@@ -117,7 +137,15 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 		ICBPER:          f.Totales.ICBPER,
 		Total:           f.Totales.Total,
 		Payload:         payloadJSON,
-	})
+	}
+	if f.Referencia != nil {
+		pendIn.RefTipoDoc = f.Referencia.TipoDoc
+		pendIn.RefSerie = f.Referencia.Serie
+		pendIn.RefCorrelativo = f.Referencia.Correlativo
+		pendIn.MotivoCodigo = f.MotivoCodigo
+		pendIn.MotivoDescripcion = f.MotivoDescripcion
+	}
+	id, err := h.Comprobantes.CreatePendiente(r.Context(), pendIn)
 	if err != nil {
 		h.Logger.Error("CreatePendiente", "err", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "persistir"})

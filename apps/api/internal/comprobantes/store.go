@@ -53,6 +53,11 @@ type PendienteInput struct {
 	ReceptorTipoDoc, ReceptorNumDoc, ReceptorRazon                  string
 	Gravado, Exonerado, Inafecto, Gratuito, IGV, ISC, ICBPER, Total float64
 	Payload                                                         json.RawMessage
+	// Solo para notas (tipo 07/08):
+	RefTipoDoc, RefSerie string
+	RefCorrelativo       int64
+	MotivoCodigo         string
+	MotivoDescripcion    string
 }
 
 // CreatePendiente guarda un comprobante recién recibido con estado=pendiente.
@@ -61,19 +66,28 @@ func (s *Store) CreatePendiente(ctx context.Context, in PendienteInput) (uuid.UU
 	if len(in.Payload) == 0 {
 		in.Payload = []byte("{}")
 	}
+	var refTipoDoc, refSerie any
+	var refCorrelativo any
+	if in.RefTipoDoc != "" {
+		refTipoDoc = in.RefTipoDoc
+		refSerie = in.RefSerie
+		refCorrelativo = in.RefCorrelativo
+	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO comprobantes (
 			id, tenant_id, tipo_documento, serie, correlativo, fecha_emision, moneda,
 			receptor_tipo_doc, receptor_num_doc, receptor_razon,
 			total_gravado, total_exonerado, total_inafecto, total_gratuito,
 			igv, isc, icbper, total,
-			estado, payload
+			estado, payload,
+			ref_tipo_doc, ref_serie, ref_correlativo, motivo_codigo, motivo_descripcion
 		) VALUES (
 			$1,$2,$3,$4,$5,$6,$7,
 			$8,$9,$10,
 			$11,$12,$13,$14,
 			$15,$16,$17,$18,
-			'pendiente',$19
+			'pendiente',$19,
+			$20,$21,$22,$23,$24
 		)
 	`,
 		id, in.TenantID, in.Tipo, in.Serie, in.Correlativo, in.FechaEmision, in.Moneda,
@@ -81,6 +95,7 @@ func (s *Store) CreatePendiente(ctx context.Context, in PendienteInput) (uuid.UU
 		in.Gravado, in.Exonerado, in.Inafecto, in.Gratuito,
 		in.IGV, in.ISC, in.ICBPER, in.Total,
 		[]byte(in.Payload),
+		refTipoDoc, refSerie, refCorrelativo, nullable(in.MotivoCodigo), nullable(in.MotivoDescripcion),
 	)
 	if err != nil {
 		return uuid.Nil, err

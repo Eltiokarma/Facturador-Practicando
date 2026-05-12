@@ -5,6 +5,7 @@ export type ComprobanteRow = {
   correlativo: number;
   fecha_emision: string;
   moneda: string;
+  receptor_tipo_doc: string;
   receptor_doc: string;
   receptor_razon: string;
   total: number;
@@ -21,6 +22,7 @@ export type ComprobanteDetalleT = ComprobanteRow & {
   exonerado: number;
   inafecto: number;
   payload: any;
+  receptor_tipo_doc: string;
 };
 
 export type Item = {

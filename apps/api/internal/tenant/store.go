@@ -31,6 +31,7 @@ type Record struct {
 	ClaveSOL        string    `json:"-"`
 	CertPath        string    `json:"cert_path,omitempty"`
 	CertPassCipher  []byte    `json:"-"`
+	DemoMode        bool      `json:"demo_mode"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
@@ -56,10 +57,10 @@ func (s *Store) ByID(ctx context.Context, id uuid.UUID) (*Record, error) {
 		SELECT id, ruc, razon_social, nombre_comercial, direccion_fiscal,
 		       ubigeo, sunat_mode,
 		       sunat_usuario_sol_cifrado, sunat_clave_sol_cifrada,
-		       cert_path, cert_pass_cifrado, updated_at
+		       cert_path, cert_pass_cifrado, demo_mode, updated_at
 		FROM tenants WHERE id=$1
 	`, id).Scan(&r.ID, &r.RUC, &r.RazonSocial, &nombre, &direccion,
-		&ubigeo, &r.SunatMode, &usuario, &clave, &certPath, &passp, &r.UpdatedAt)
+		&ubigeo, &r.SunatMode, &usuario, &clave, &certPath, &passp, &r.DemoMode, &r.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -174,10 +175,12 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (uuid.UUID, error) {
 	if in.RazonSocial == "" {
 		return uuid.Nil, errors.New("razón social requerida")
 	}
+	// Por defecto demo_mode=true: el dueño activa producción real desde
+	// Configuración una vez que tiene cert + credenciales.
 	var id uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO tenants (ruc, razon_social, nombre_comercial, direccion_fiscal, ubigeo, sunat_mode)
-		VALUES ($1,$2,$3,$4,$5,'beta')
+		INSERT INTO tenants (ruc, razon_social, nombre_comercial, direccion_fiscal, ubigeo, sunat_mode, demo_mode)
+		VALUES ($1,$2,$3,$4,$5,'beta', TRUE)
 		ON CONFLICT (ruc) DO NOTHING
 		RETURNING id
 	`, in.RUC, in.RazonSocial, nullable(in.NombreComercial),
@@ -186,6 +189,15 @@ func (s *Store) Create(ctx context.Context, in CreateInput) (uuid.UUID, error) {
 		return uuid.Nil, errors.New("ya existe un tenant con ese RUC")
 	}
 	return id, err
+}
+
+// SetDemoMode permite al dueño desactivar el modo demo. Requiere haber
+// cargado cert y credenciales antes.
+func (s *Store) SetDemoMode(ctx context.Context, id uuid.UUID, demo bool) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE tenants SET demo_mode=$2, updated_at=now() WHERE id=$1
+	`, id, demo)
+	return err
 }
 
 // AddMember agrega un usuario a un tenant con cierto rol.

@@ -41,31 +41,66 @@ type Totales struct {
 	Total      float64 `json:"total"`
 }
 
+// Referencia indica el comprobante original sobre el que se emite una
+// nota de crédito o débito.
+type Referencia struct {
+	TipoDoc     string `json:"tipo_doc"`     // "01" factura, "03" boleta
+	Serie       string `json:"serie"`
+	Correlativo int64  `json:"correlativo"`
+}
+
 type Factura struct {
-	Tipo          string   `json:"tipo"`         // "01" factura, "03" boleta
-	Serie         string   `json:"serie"`        // "F001" o "B001"
-	Correlativo   int64    `json:"correlativo"`
-	FechaEmision  string   `json:"fecha_emision"` // YYYY-MM-DD
-	Moneda        string   `json:"moneda"`        // PEN, USD
-	TipoOperacion string   `json:"tipo_operacion,omitempty"` // default "0101"
-	Receptor      Receptor `json:"receptor"`
-	Items         []Item   `json:"items"`
-	Totales       Totales  `json:"totales,omitempty"` // se sobrescribe server-side
+	Tipo          string      `json:"tipo"`         // 01 factura, 03 boleta, 07 NC, 08 ND
+	Serie         string      `json:"serie"`
+	Correlativo   int64       `json:"correlativo"`
+	FechaEmision  string      `json:"fecha_emision"`
+	Moneda        string      `json:"moneda"`
+	TipoOperacion string      `json:"tipo_operacion,omitempty"`
+	Receptor      Receptor    `json:"receptor"`
+	Items         []Item      `json:"items"`
+	Totales       Totales     `json:"totales,omitempty"`
+	// Solo para notas (tipo 07 / 08):
+	Referencia        *Referencia `json:"referencia,omitempty"`
+	MotivoCodigo      string      `json:"motivo_codigo,omitempty"`      // catálogo 09 (NC) o 10 (ND)
+	MotivoDescripcion string      `json:"motivo_descripcion,omitempty"`
 }
 
 // Validar revisa estructura mínima y reglas SUNAT básicas.
 func (f *Factura) Validar() error {
-	if f.Tipo != "01" && f.Tipo != "03" {
-		return fmt.Errorf("tipo de comprobante no soportado en MVP: %q (esperaba 01=factura o 03=boleta)", f.Tipo)
+	switch f.Tipo {
+	case "01", "03", "07", "08":
+		// ok
+	default:
+		return fmt.Errorf("tipo de comprobante no soportado: %q", f.Tipo)
 	}
 	if len(f.Serie) != 4 {
 		return fmt.Errorf("serie inválida: %q (debe ser 4 caracteres)", f.Serie)
 	}
-	if f.Tipo == "01" && f.Serie[0] != 'F' {
-		return errors.New("factura debe tener serie que empiece con 'F'")
+	switch f.Tipo {
+	case "01", "07", "08":
+		// Facturas y notas que referencian factura: serie F***
+		if f.Serie[0] != 'F' && f.Serie[0] != 'B' {
+			return errors.New("serie debe empezar con 'F' o 'B'")
+		}
+	case "03":
+		if f.Serie[0] != 'B' {
+			return errors.New("boleta debe tener serie que empiece con 'B'")
+		}
 	}
-	if f.Tipo == "03" && f.Serie[0] != 'B' {
-		return errors.New("boleta debe tener serie que empiece con 'B'")
+	// Notas: requieren referencia y motivo.
+	if f.Tipo == "07" || f.Tipo == "08" {
+		if f.Referencia == nil {
+			return errors.New("la nota requiere documento_referencia")
+		}
+		if f.Referencia.TipoDoc != "01" && f.Referencia.TipoDoc != "03" {
+			return errors.New("documento_referencia.tipo_doc debe ser 01 o 03")
+		}
+		if f.MotivoCodigo == "" {
+			return errors.New("motivo_codigo requerido (catálogo 09 para NC, 10 para ND)")
+		}
+		if f.MotivoDescripcion == "" {
+			return errors.New("motivo_descripcion requerido")
+		}
 	}
 	if f.Correlativo <= 0 {
 		return errors.New("correlativo debe ser > 0")
@@ -89,7 +124,15 @@ func (f *Factura) Validar() error {
 		}
 	case "03": // boleta → DNI u otro
 		if f.Receptor.TipoDoc == "" {
-			f.Receptor.TipoDoc = "1" // DNI por defecto
+			f.Receptor.TipoDoc = "1"
+		}
+	case "07", "08": // notas → mismo tipo de receptor que el comprobante referenciado
+		if f.Receptor.TipoDoc == "" {
+			if f.Referencia != nil && f.Referencia.TipoDoc == "01" {
+				f.Receptor.TipoDoc = "6"
+			} else {
+				f.Receptor.TipoDoc = "1"
+			}
 		}
 	}
 	if f.Receptor.RazonSocial == "" {
