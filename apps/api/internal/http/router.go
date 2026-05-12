@@ -10,14 +10,18 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/eltiokarma/facturador/apps/api/internal/auth"
 	"github.com/eltiokarma/facturador/apps/api/internal/config"
 )
 
 type Deps struct {
-	Cfg      *config.Config
-	Logger   *slog.Logger
-	Facturas *FacturasHandler
-	MotorPing func() error
+	Cfg          *config.Config
+	Logger       *slog.Logger
+	Signer       *auth.Signer
+	Auth         *AuthHandler
+	Facturas     *FacturasHandler
+	Comprobantes *ComprobantesHandler
+	MotorPing    func() error
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -41,12 +45,29 @@ func NewRouter(d Deps) http.Handler {
 	r.Get("/ready", ready(d))
 
 	r.Route("/api/v1", func(r chi.Router) {
-		if d.Facturas != nil {
-			r.Post("/facturas", d.Facturas.Emitir)
-			r.Post("/boletas", d.Facturas.Emitir) // mismo handler, distingue por tipo en el payload
+		// Rutas públicas
+		if d.Auth != nil {
+			r.Post("/auth/login", d.Auth.Login)
+			r.Post("/auth/refresh", d.Auth.Refresh)
 		}
-		r.Post("/notas-credito", notImplemented("emitir nota de crédito"))
-		r.Post("/notas-debito", notImplemented("emitir nota de débito"))
+
+		// Rutas autenticadas
+		r.Group(func(r chi.Router) {
+			r.Use(auth.Middleware(d.Signer))
+			if d.Auth != nil {
+				r.Get("/me", d.Auth.Me)
+			}
+			if d.Facturas != nil {
+				r.Post("/facturas", d.Facturas.Emitir)
+				r.Post("/boletas", d.Facturas.Emitir)
+			}
+			if d.Comprobantes != nil {
+				r.Get("/comprobantes", d.Comprobantes.List)
+				r.Get("/comprobantes/{id}", d.Comprobantes.Get)
+				r.Get("/comprobantes/{id}/xml", d.Comprobantes.XML)
+				r.Get("/comprobantes/{id}/cdr", d.Comprobantes.CDR)
+			}
+		})
 	})
 
 	return r
@@ -83,15 +104,6 @@ func ready(d Deps) http.HandlerFunc {
 			body["motor"] = motorErr
 		}
 		writeJSON(w, status, body)
-	}
-}
-
-func notImplemented(action string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{
-			"error":  "not_implemented",
-			"action": action,
-		})
 	}
 }
 

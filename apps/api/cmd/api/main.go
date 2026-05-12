@@ -10,12 +10,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/eltiokarma/facturador/apps/api/internal/auth"
 	"github.com/eltiokarma/facturador/apps/api/internal/cert"
+	"github.com/eltiokarma/facturador/apps/api/internal/comprobantes"
 	"github.com/eltiokarma/facturador/apps/api/internal/config"
+	"github.com/eltiokarma/facturador/apps/api/internal/db"
 	httpapi "github.com/eltiokarma/facturador/apps/api/internal/http"
 	"github.com/eltiokarma/facturador/apps/api/internal/motor"
-	"github.com/eltiokarma/facturador/apps/api/internal/storage"
 	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
+	"github.com/eltiokarma/facturador/apps/api/internal/users"
 )
 
 func main() {
@@ -39,30 +45,50 @@ func main() {
 		logger.Error("no pude cargar el certificado", "err", err, "path", ten.CertPath)
 		os.Exit(1)
 	}
-	// Limpiar passphrase de memoria del struct: ya descifró, no la necesitamos más.
 	ten.CertPassphrase = ""
 	logger.Info("certificado cargado en memoria", "path", ten.CertPath)
 
-	mot := motor.New(cfg.MotorURL)
-	st, err := storage.New(cfg.DataDir)
+	ctxStart, cancelStart := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelStart()
+
+	pool, err := db.Connect(ctxStart, cfg.PostgresDSN)
 	if err != nil {
-		logger.Error("no pude inicializar storage", "err", err, "dir", cfg.DataDir)
+		logger.Error("DB connect", "err", err)
+		os.Exit(1)
+	}
+	if err := db.Migrate(ctxStart, pool); err != nil {
+		logger.Error("DB migrate", "err", err)
+		os.Exit(1)
+	}
+	logger.Info("DB conectada y migrada")
+
+	tenantID, err := ensureTenant(ctxStart, pool, ten)
+	if err != nil {
+		logger.Error("ensureTenant", "err", err)
+		os.Exit(1)
+	}
+	logger.Info("tenant resuelto", "ruc", ten.RUC, "id", tenantID)
+
+	usersStore := users.NewStore(pool)
+	compStore, err := comprobantes.NewStore(pool, cfg.DataDir)
+	if err != nil {
+		logger.Error("comprobantes.NewStore", "err", err)
 		os.Exit(1)
 	}
 
-	handler := &httpapi.FacturasHandler{
-		Cfg:    cfg,
-		Tenant: ten,
-		Cert:   mat,
-		Motor:  mot,
-		Store:  st,
-		Logger: logger,
+	signer := auth.NewSigner(cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
+	mot := motor.New(cfg.MotorURL)
+
+	authHandler := &httpapi.AuthHandler{Signer: signer, Users: usersStore, Logger: logger}
+	facturasHandler := &httpapi.FacturasHandler{
+		Cfg: cfg, Tenant: ten, Cert: mat, Motor: mot,
+		Comprobantes: compStore, Logger: logger,
 	}
+	compHandler := &httpapi.ComprobantesHandler{Store: compStore, Logger: logger}
 
 	router := httpapi.NewRouter(httpapi.Deps{
-		Cfg:      cfg,
-		Logger:   logger,
-		Facturas: handler,
+		Cfg: cfg, Logger: logger, Signer: signer,
+		Auth: authHandler, Facturas: facturasHandler, Comprobantes: compHandler,
 		MotorPing: func() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
@@ -99,12 +125,29 @@ func main() {
 
 	<-ctx.Done()
 	logger.Info("recibida señal, apagando")
-
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("shutdown falló", "err", err)
-		os.Exit(1)
 	}
+	pool.Close()
 	logger.Info("apagado limpio")
+}
+
+// ensureTenant crea o actualiza la fila de la tabla tenants que corresponde
+// al RUC configurado por env. Devuelve el UUID del tenant.
+func ensureTenant(ctx context.Context, pool *pgxpool.Pool, t *tenant.Tenant) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := pool.QueryRow(ctx, `
+		INSERT INTO tenants (ruc, razon_social, nombre_comercial, direccion_fiscal, ubigeo, sunat_mode)
+		VALUES ($1,$2,$3,$4,$5,'beta')
+		ON CONFLICT (ruc) DO UPDATE SET
+			razon_social = EXCLUDED.razon_social,
+			nombre_comercial = EXCLUDED.nombre_comercial,
+			direccion_fiscal = EXCLUDED.direccion_fiscal,
+			ubigeo = EXCLUDED.ubigeo,
+			updated_at = now()
+		RETURNING id
+	`, t.RUC, t.RazonSocial, t.NombreComercial, t.DireccionFiscal, t.Ubigeo).Scan(&id)
+	return id, err
 }

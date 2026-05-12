@@ -5,48 +5,95 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/google/uuid"
+
+	"github.com/eltiokarma/facturador/apps/api/internal/auth"
 	"github.com/eltiokarma/facturador/apps/api/internal/cert"
+	"github.com/eltiokarma/facturador/apps/api/internal/comprobantes"
 	"github.com/eltiokarma/facturador/apps/api/internal/config"
 	"github.com/eltiokarma/facturador/apps/api/internal/facturacion"
 	"github.com/eltiokarma/facturador/apps/api/internal/motor"
-	"github.com/eltiokarma/facturador/apps/api/internal/storage"
 	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
 )
 
 type FacturasHandler struct {
-	Cfg     *config.Config
-	Tenant  *tenant.Tenant
-	Cert    *cert.Material
-	Motor   *motor.Cliente
-	Store   *storage.Store
-	Logger  *slog.Logger
+	Cfg          *config.Config
+	Tenant       *tenant.Tenant // por ahora el tenant viene de env (single-tenant MVP)
+	Cert         *cert.Material
+	Motor        *motor.Cliente
+	Comprobantes *comprobantes.Store
+	Logger       *slog.Logger
+}
+
+type emitirRequest struct {
+	Tipo          string                 `json:"tipo"`          // si viene vacío y la ruta es /facturas → "01"
+	Serie         string                 `json:"serie"`
+	FechaEmision  string                 `json:"fecha_emision"` // si viene vacío, hoy
+	Moneda        string                 `json:"moneda"`
+	TipoOperacion string                 `json:"tipo_operacion,omitempty"`
+	Receptor      facturacion.Receptor   `json:"receptor"`
+	Items         []facturacion.Item     `json:"items"`
 }
 
 type emitirRespuesta struct {
-	Estado        string                 `json:"estado"`
-	Codigo        string                 `json:"codigo,omitempty"`
-	Mensaje       string                 `json:"mensaje,omitempty"`
-	HashCPE       string                 `json:"hash_cpe,omitempty"`
-	Observaciones []string               `json:"observaciones,omitempty"`
-	Totales       facturacion.Totales    `json:"totales"`
-	GuardadoEn    string                 `json:"guardado_en,omitempty"`
+	ID            uuid.UUID            `json:"id"`
+	Tipo          string               `json:"tipo"`
+	Serie         string               `json:"serie"`
+	Correlativo   int64                `json:"correlativo"`
+	Estado        string               `json:"estado"`
+	Codigo        string               `json:"codigo,omitempty"`
+	Mensaje       string               `json:"mensaje,omitempty"`
+	HashCPE       string               `json:"hash_cpe,omitempty"`
+	Observaciones []string             `json:"observaciones,omitempty"`
+	Totales       facturacion.Totales  `json:"totales"`
 }
 
 func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
-	var f facturacion.Factura
-	if err := json.NewDecoder(r.Body).Decode(&f); err != nil {
+	tenantID, ok := auth.TenantIDFrom(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	var req emitirRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "json_invalido", "detalle": err.Error()})
 		return
+	}
+
+	// Default tipo según ruta: facturas → "01", boletas → "03".
+	if req.Tipo == "" {
+		switch r.URL.Path {
+		case "/api/v1/boletas":
+			req.Tipo = "03"
+		default:
+			req.Tipo = "01"
+		}
+	}
+	if req.Moneda == "" {
+		req.Moneda = "PEN"
+	}
+
+	// Asignar correlativo atómico antes de validar el resto.
+	correlativo, err := h.Comprobantes.NextCorrelativo(r.Context(), tenantID, req.Tipo, req.Serie)
+	if err != nil {
+		h.Logger.Error("NextCorrelativo", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "correlativo"})
+		return
+	}
+
+	f := facturacion.Factura{
+		Tipo: req.Tipo, Serie: req.Serie, Correlativo: correlativo,
+		FechaEmision: req.FechaEmision, Moneda: req.Moneda,
+		TipoOperacion: req.TipoOperacion, Receptor: req.Receptor, Items: req.Items,
 	}
 	if err := f.Validar(); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "validacion", "detalle": err.Error()})
 		return
 	}
-
-	// Recalcular totales server-side. Lo que mandó el cliente es referencia, no verdad.
 	f.RecalcularTotales()
 
-	req := motor.EmitirRequest{
+	mReq := motor.EmitirRequest{
 		Modo: string(h.Cfg.SunatMode),
 		Tenant: map[string]any{
 			"ruc":              h.Tenant.RUC,
@@ -80,28 +127,43 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	resp, err := h.Motor.Emitir(r.Context(), req)
+	resp, err := h.Motor.Emitir(r.Context(), mReq)
 	if err != nil {
-		h.Logger.Error("motor falló", "err", err)
+		h.Logger.Error("motor.Emitir", "err", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "motor_inalcanzable", "detalle": err.Error()})
 		return
 	}
 
 	payloadJSON, _ := json.Marshal(f)
-	reg := storage.Registro{
-		Tipo:         f.Tipo,
-		Serie:        f.Serie,
-		Correlativo:  f.Correlativo,
-		FechaEmision: f.FechaEmision,
-		Estado:       resp.Estado,
-		Codigo:       resp.Codigo,
-		Mensaje:      resp.Mensaje,
-		HashCPE:      resp.HashCPE,
-		Payload:      payloadJSON,
+	saveIn := comprobantes.SaveInput{
+		TenantID:        tenantID,
+		Tipo:            f.Tipo,
+		Serie:           f.Serie,
+		Correlativo:     f.Correlativo,
+		FechaEmision:    f.FechaEmision,
+		Moneda:          f.Moneda,
+		ReceptorTipoDoc: f.Receptor.TipoDoc,
+		ReceptorNumDoc:  f.Receptor.NumDoc,
+		ReceptorRazon:   f.Receptor.RazonSocial,
+		Gravado:         f.Totales.Gravado,
+		Exonerado:       f.Totales.Exonerado,
+		Inafecto:        f.Totales.Inafecto,
+		Gratuito:        f.Totales.Gratuito,
+		IGV:             f.Totales.IGV,
+		ISC:             f.Totales.ISC,
+		ICBPER:          f.Totales.ICBPER,
+		Total:           f.Totales.Total,
+		Estado:          resp.Estado,
+		SunatCodigo:     resp.Codigo,
+		SunatMensaje:    resp.Mensaje,
+		HashCPE:         resp.HashCPE,
+		XMLFirmadoB64:   resp.XMLFirmado,
+		CDRZipB64:       resp.CDRZip,
+		Payload:         payloadJSON,
 	}
-	dir, errStore := h.Store.Guardar(reg, resp.XMLFirmado, resp.CDRZip)
-	if errStore != nil {
-		h.Logger.Error("guardar artefactos falló", "err", errStore)
+	id, errSave := h.Comprobantes.Save(r.Context(), saveIn)
+	if errSave != nil {
+		h.Logger.Error("comprobantes.Save", "err", errSave)
 	}
 
 	status := http.StatusOK
@@ -112,13 +174,9 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, status, emitirRespuesta{
-		Estado:        resp.Estado,
-		Codigo:        resp.Codigo,
-		Mensaje:       resp.Mensaje,
-		HashCPE:       resp.HashCPE,
-		Observaciones: resp.Observaciones,
-		Totales:       f.Totales,
-		GuardadoEn:    dir,
+		ID: id, Tipo: f.Tipo, Serie: f.Serie, Correlativo: f.Correlativo,
+		Estado: resp.Estado, Codigo: resp.Codigo, Mensaje: resp.Mensaje,
+		HashCPE: resp.HashCPE, Observaciones: resp.Observaciones, Totales: f.Totales,
 	})
 }
 

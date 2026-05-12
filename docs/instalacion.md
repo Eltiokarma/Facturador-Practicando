@@ -80,7 +80,22 @@ Si `ready` no da OK, esperá unos segundos más (el motor PHP tarda en arrancar 
 docker compose logs api motor
 ```
 
-## Paso 4 — Emitir tu primera factura beta
+## Paso 4 — Crear el primer usuario para entrar a la UI
+
+```bash
+docker compose exec api /app/seed-user \
+    -email=tu@email.com \
+    -password=ponete-uno-largo \
+    -nombre="Tu Nombre" \
+    -rol=dueno
+```
+
+Roles posibles: `dueno`, `contador`, `cajero`. Con eso ya podés entrar a
+`http://localhost:5173` y loguearte. La interfaz tiene tres pantallas:
+**Resumen**, **Emitir comprobante** (formulario con ítems dinámicos) y
+**Comprobantes** (listado con filtros + detalle con descarga de XML/CDR).
+
+## Paso 5 — Emitir tu primera factura beta
 
 ```bash
 ./scripts/probar-factura.sh
@@ -112,7 +127,7 @@ Mirá el `codigo` y `mensaje` en la respuesta. Los más comunes:
 | 2017, 2018 | Datos del receptor inválidos. |
 | 3001+  | Validaciones de estructura del UBL. Mirá el detalle. |
 
-## Paso 5 — Reemitir, cambiar correlativo, etc.
+## Paso 6 — Reemitir, cambiar correlativo, etc.
 
 El script usa `F001-1` por defecto. Para emitir otra:
 
@@ -121,7 +136,7 @@ CORRELATIVO=2 ./scripts/probar-factura.sh
 SERIE=F002 CORRELATIVO=1 ./scripts/probar-factura.sh
 ```
 
-## Paso 6 — Pasar a producción
+## Paso 7 — Pasar a producción
 
 **Solo cuando hayas validado el flujo en beta.** No antes.
 
