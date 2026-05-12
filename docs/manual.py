@@ -1373,24 +1373,31 @@ def build_story(S):
         S, story,
     )
 
+    H2("Ya entregado", S, story)
+    bullets([
+        "Persistencia completa en PostgreSQL con correlativos atómicos.",
+        "Auth JWT con login, refresh y roles (dueño/contador/cajero).",
+        "UI completa estilo Stripe-like con dashboard, emisión, listado y detalle.",
+        "Catálogos de clientes y productos con autocomplete al emitir.",
+        "PDF imprimible A4 con QR del hash CPE.",
+        "Cola asíncrona Redis + worker con reintentos exponenciales.",
+        "Polling en la UI para mostrar el resultado SUNAT cuando llega.",
+    ], S, story)
+
     H2("Próximo (semanas)", S, story)
     bullets([
-        "Cola asíncrona Redis + worker (eliminar la espera sincrónica a SUNAT).",
-        "Persistencia completa en PostgreSQL (correlativos atómicos, bitácora de envíos).",
-        "Notas de crédito y débito.",
-        "Boletas con resumen diario.",
-        "PDF bonito con QR.",
-        "Autenticación de usuarios JWT (multi-usuario por tenant).",
+        "Notas de crédito y notas de débito.",
+        "Resumen diario consolidado de boletas (lo exige SUNAT).",
+        "Configuración del tenant desde la UI (subir cert, editar datos).",
+        "Multi-tenant real con onboarding de nuevos RUCs desde la UI.",
+        "PWA offline-first con cola local en IndexedDB.",
     ], S, story)
 
     H2("Mediano plazo (meses)", S, story)
     bullets([
-        "Interfaz web completa (hoy solo es scaffolding).",
-        "Funcionamiento offline real con cola local en el navegador.",
-        "Importación masiva desde Excel.",
-        "Notificaciones por email al cliente.",
+        "Notificaciones por email al cliente con PDF y XML adjuntos.",
+        "Importación masiva desde Excel / CSV.",
         "Reportes y exportes contables.",
-        "Multi-tenant real con onboarding de nuevos RUCs desde la UI.",
     ], S, story)
 
     H2("Antes de julio 2026", S, story)

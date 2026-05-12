@@ -144,7 +144,7 @@ export function NuevaFactura() {
     try {
       const resp = await api<{
         id: string; tipo: string; serie: string; correlativo: number;
-        estado: string; codigo?: string; mensaje?: string;
+        estado: string;
       }>(path, {
         body: {
           tipo,
@@ -168,8 +168,8 @@ export function NuevaFactura() {
         },
       });
 
-      // Si quedó aceptado, guardar el cliente al catálogo si está la opción
-      if (guardarCliente && (resp.estado === "aceptado" || resp.estado === "aceptado_con_obs")) {
+      // Guardar al catálogo en background si está la opción (no esperamos la respuesta de SUNAT)
+      if (guardarCliente && receptorNumDoc.trim() && receptorRazon.trim()) {
         api("/api/v1/clientes", {
           body: {
             tipo_doc: receptorTipoDoc,
@@ -180,13 +180,7 @@ export function NuevaFactura() {
         }).catch(() => { /* best effort */ });
       }
 
-      if (resp.estado === "aceptado") {
-        toast.success(`SUNAT aceptó ${resp.serie}-${resp.correlativo}`);
-      } else if (resp.estado === "aceptado_con_obs") {
-        toast.warning(`Aceptado con observaciones: ${resp.mensaje}`);
-      } else {
-        toast.error(`SUNAT rechazó: ${resp.codigo} ${resp.mensaje}`);
-      }
+      toast.success(`Encolado: ${resp.serie}-${resp.correlativo}. Esperando respuesta de SUNAT…`);
       nav(`/comprobantes/${resp.id}`);
     } catch (err) {
       const msg = err instanceof ApiError

@@ -116,8 +116,19 @@ facturador/
 1. ✅ Leído CLAUDE.md.
 2. ✅ Decisión del stack del motor (Opción B) escrita en `docs/adr/0001-stack-motor.md`.
 3. ✅ Estructura del monorepo levantada.
-4. ✅ `docker-compose.yml` mínimo: postgres, redis, api, web, motor.
-5. ⏳ Primer milestone: emitir UNA factura en modo beta (homologación) end-to-end. Sin UI bonita aún, solo curl → API → SUNAT beta → CDR aceptado.
+4. ✅ `docker-compose.yml` con postgres + redis + api + motor + web.
+5. ✅ Primer milestone end-to-end: API Go ⇄ motor PHP/Greenter ⇄ SUNAT.
+6. ✅ Auth JWT con multi-usuario, roles, refresh tokens, bcrypt.
+7. ✅ Persistencia Postgres con migraciones embebidas y correlativos atómicos.
+8. ✅ UI completa estilo Stripe-like: dashboard, emitir, listado, detalle, clientes, productos.
+9. ✅ PDF imprimible A4 con QR del hash CPE.
+10. ✅ Catálogos de clientes y productos con autocomplete en la emisión.
+11. ✅ Cola asíncrona Redis + asynq con worker en el mismo proceso, polling en la UI.
+12. ⏳ Notas de crédito y débito (próximo grande).
+13. ⏳ Resumen diario de boletas (lo exige SUNAT).
+14. ⏳ Configuración del tenant desde la UI (subir cert, editar datos).
+15. ⏳ Multi-tenant real desde la UI (hoy es single-tenant por env).
+16. ⏳ GRE (obligatoria julio 2026).
 
 ## 13. Sobre el dueño del proyecto
 

@@ -8,44 +8,36 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/eltiokarma/facturador/apps/api/internal/auth"
-	"github.com/eltiokarma/facturador/apps/api/internal/cert"
 	"github.com/eltiokarma/facturador/apps/api/internal/comprobantes"
 	"github.com/eltiokarma/facturador/apps/api/internal/config"
 	"github.com/eltiokarma/facturador/apps/api/internal/facturacion"
-	"github.com/eltiokarma/facturador/apps/api/internal/motor"
-	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
+	"github.com/eltiokarma/facturador/apps/api/internal/queue"
 )
 
 type FacturasHandler struct {
 	Cfg          *config.Config
-	Tenant       *tenant.Tenant // por ahora el tenant viene de env (single-tenant MVP)
-	Cert         *cert.Material
-	Motor        *motor.Cliente
 	Comprobantes *comprobantes.Store
+	Queue        *queue.Client
 	Logger       *slog.Logger
 }
 
 type emitirRequest struct {
-	Tipo          string                 `json:"tipo"`          // si viene vacío y la ruta es /facturas → "01"
-	Serie         string                 `json:"serie"`
-	FechaEmision  string                 `json:"fecha_emision"` // si viene vacío, hoy
-	Moneda        string                 `json:"moneda"`
-	TipoOperacion string                 `json:"tipo_operacion,omitempty"`
-	Receptor      facturacion.Receptor   `json:"receptor"`
-	Items         []facturacion.Item     `json:"items"`
+	Tipo          string               `json:"tipo"`
+	Serie         string               `json:"serie"`
+	FechaEmision  string               `json:"fecha_emision"`
+	Moneda        string               `json:"moneda"`
+	TipoOperacion string               `json:"tipo_operacion,omitempty"`
+	Receptor      facturacion.Receptor `json:"receptor"`
+	Items         []facturacion.Item   `json:"items"`
 }
 
 type emitirRespuesta struct {
-	ID            uuid.UUID            `json:"id"`
-	Tipo          string               `json:"tipo"`
-	Serie         string               `json:"serie"`
-	Correlativo   int64                `json:"correlativo"`
-	Estado        string               `json:"estado"`
-	Codigo        string               `json:"codigo,omitempty"`
-	Mensaje       string               `json:"mensaje,omitempty"`
-	HashCPE       string               `json:"hash_cpe,omitempty"`
-	Observaciones []string             `json:"observaciones,omitempty"`
-	Totales       facturacion.Totales  `json:"totales"`
+	ID          uuid.UUID           `json:"id"`
+	Tipo        string              `json:"tipo"`
+	Serie       string              `json:"serie"`
+	Correlativo int64               `json:"correlativo"`
+	Estado      string              `json:"estado"`
+	Totales     facturacion.Totales `json:"totales"`
 }
 
 func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +53,6 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Default tipo según ruta: facturas → "01", boletas → "03".
 	if req.Tipo == "" {
 		switch r.URL.Path {
 		case "/api/v1/boletas":
@@ -74,7 +65,6 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 		req.Moneda = "PEN"
 	}
 
-	// Asignar correlativo atómico antes de validar el resto.
 	correlativo, err := h.Comprobantes.NextCorrelativo(r.Context(), tenantID, req.Tipo, req.Serie)
 	if err != nil {
 		h.Logger.Error("NextCorrelativo", "err", err)
@@ -93,49 +83,26 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 	}
 	f.RecalcularTotales()
 
-	mReq := motor.EmitirRequest{
-		Modo: string(h.Cfg.SunatMode),
-		Tenant: map[string]any{
-			"ruc":              h.Tenant.RUC,
-			"razon_social":     h.Tenant.RazonSocial,
-			"nombre_comercial": h.Tenant.NombreComercial,
-			"direccion_fiscal": h.Tenant.DireccionFiscal,
-			"ubigeo":           h.Tenant.Ubigeo,
-			"departamento":     h.Tenant.Departamento,
-			"provincia":        h.Tenant.Provincia,
-			"distrito":         h.Tenant.Distrito,
-			"usuario_sol":      h.Tenant.UsuarioSOL,
-			"clave_sol":        h.Tenant.ClaveSOL,
-			"cert_pem":         h.Cert.CertPEM,
-			"cert_key_pem":     h.Cert.KeyPEM,
+	// Payload que el worker usará para construir el request al motor.
+	payloadDoc := map[string]any{
+		"tipo":           f.Tipo,
+		"serie":          f.Serie,
+		"correlativo":    f.Correlativo,
+		"fecha_emision":  f.FechaEmision,
+		"moneda":         f.Moneda,
+		"tipo_operacion": defaultStr(f.TipoOperacion, "0101"),
+		"receptor": map[string]any{
+			"tipo_doc":     f.Receptor.TipoDoc,
+			"num_doc":      f.Receptor.NumDoc,
+			"razon_social": f.Receptor.RazonSocial,
+			"direccion":    f.Receptor.Direccion,
 		},
-		Comprobante: map[string]any{
-			"tipo":           f.Tipo,
-			"serie":          f.Serie,
-			"correlativo":    f.Correlativo,
-			"fecha_emision":  f.FechaEmision,
-			"moneda":         f.Moneda,
-			"tipo_operacion": defaultStr(f.TipoOperacion, "0101"),
-			"receptor": map[string]any{
-				"tipo_doc":     f.Receptor.TipoDoc,
-				"num_doc":      f.Receptor.NumDoc,
-				"razon_social": f.Receptor.RazonSocial,
-				"direccion":    f.Receptor.Direccion,
-			},
-			"items":   itemsToMap(f.Items),
-			"totales": totalesToMap(f.Totales),
-		},
+		"items":   itemsToMap(f.Items),
+		"totales": totalesToMap(f.Totales),
 	}
+	payloadJSON, _ := json.Marshal(payloadDoc)
 
-	resp, err := h.Motor.Emitir(r.Context(), mReq)
-	if err != nil {
-		h.Logger.Error("motor.Emitir", "err", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "motor_inalcanzable", "detalle": err.Error()})
-		return
-	}
-
-	payloadJSON, _ := json.Marshal(f)
-	saveIn := comprobantes.SaveInput{
+	id, err := h.Comprobantes.CreatePendiente(r.Context(), comprobantes.PendienteInput{
 		TenantID:        tenantID,
 		Tipo:            f.Tipo,
 		Serie:           f.Serie,
@@ -153,30 +120,25 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 		ISC:             f.Totales.ISC,
 		ICBPER:          f.Totales.ICBPER,
 		Total:           f.Totales.Total,
-		Estado:          resp.Estado,
-		SunatCodigo:     resp.Codigo,
-		SunatMensaje:    resp.Mensaje,
-		HashCPE:         resp.HashCPE,
-		XMLFirmadoB64:   resp.XMLFirmado,
-		CDRZipB64:       resp.CDRZip,
 		Payload:         payloadJSON,
-	}
-	id, errSave := h.Comprobantes.Save(r.Context(), saveIn)
-	if errSave != nil {
-		h.Logger.Error("comprobantes.Save", "err", errSave)
-	}
-
-	status := http.StatusOK
-	if resp.Estado == "rechazado" {
-		status = http.StatusUnprocessableEntity
-	} else if resp.Estado == "error" {
-		status = http.StatusBadGateway
+	})
+	if err != nil {
+		h.Logger.Error("CreatePendiente", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "persistir"})
+		return
 	}
 
-	writeJSON(w, status, emitirRespuesta{
+	if err := h.Queue.EnqueueEmit(r.Context(), queue.EmitPayload{
+		TenantID: tenantID, ComprobanteID: id,
+	}); err != nil {
+		h.Logger.Error("EnqueueEmit", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "encolar"})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, emitirRespuesta{
 		ID: id, Tipo: f.Tipo, Serie: f.Serie, Correlativo: f.Correlativo,
-		Estado: resp.Estado, Codigo: resp.Codigo, Mensaje: resp.Mensaje,
-		HashCPE: resp.HashCPE, Observaciones: resp.Observaciones, Totales: f.Totales,
+		Estado: "pendiente", Totales: f.Totales,
 	})
 }
 

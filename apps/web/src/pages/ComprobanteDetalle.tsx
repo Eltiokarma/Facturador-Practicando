@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { api, apiBlob } from "../api/client";
 import { ComprobanteDetalleT } from "../types";
 import { EstadoBadge, labelTipo } from "./Dashboard";
+
+const ESTADOS_EN_PROCESO = new Set(["pendiente", "enviando", "error"]);
 
 export function ComprobanteDetalle() {
   const { id } = useParams<{ id: string }>();
@@ -11,16 +13,50 @@ export function ComprobanteDetalle() {
   const [c, setC] = useState<ComprobanteDetalleT | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPayload, setShowPayload] = useState(false);
+  const lastEstado = useRef<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
-    api<ComprobanteDetalleT>(`/api/v1/comprobantes/${id}`)
-      .then(setC)
-      .catch(() => {
-        toast.error("No encontrado");
-        nav("/comprobantes", { replace: true });
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function fetchOne() {
+      try {
+        const data = await api<ComprobanteDetalleT>(`/api/v1/comprobantes/${id}`);
+        if (cancelled) return;
+        setC(data);
+        // Notificar cuando llega la respuesta final de SUNAT
+        if (lastEstado.current && ESTADOS_EN_PROCESO.has(lastEstado.current)) {
+          if (data.estado === "aceptado") {
+            toast.success(`SUNAT aceptó ${data.serie}-${data.correlativo}`);
+          } else if (data.estado === "aceptado_con_obs") {
+            toast.warning(`Aceptado con observaciones: ${data.sunat_mensaje || ""}`);
+          } else if (data.estado === "rechazado") {
+            toast.error(`SUNAT rechazó: ${data.sunat_codigo} ${data.sunat_mensaje || ""}`);
+          }
+        }
+        lastEstado.current = data.estado;
+      } catch {
+        if (!cancelled) {
+          toast.error("No encontrado");
+          nav("/comprobantes", { replace: true });
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchOne();
+    // Poll cada 2s mientras esté en proceso
+    const tid = window.setInterval(() => {
+      if (cancelled) return;
+      if (lastEstado.current && ESTADOS_EN_PROCESO.has(lastEstado.current)) {
+        fetchOne();
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(tid);
+    };
   }, [id, nav]);
 
   async function descargar(kind: "xml" | "cdr") {
@@ -75,7 +111,21 @@ export function ComprobanteDetalle() {
         <EstadoBadge estado={c.estado} />
       </header>
 
-      {(c.sunat_codigo || c.sunat_mensaje) && (
+      {ESTADOS_EN_PROCESO.has(c.estado) && (
+        <div className="rounded-lg p-4 text-sm bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-3">
+          <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+          <div>
+            <div className="font-medium">
+              {c.estado === "error" ? "Reintentando envío a SUNAT…" : "Enviando a SUNAT…"}
+            </div>
+            <div className="text-xs text-slate-500 mt-0.5">
+              Esto se actualiza solo. SUNAT puede tardar entre 2 y 15 segundos.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!ESTADOS_EN_PROCESO.has(c.estado) && (c.sunat_codigo || c.sunat_mensaje) && (
         <div className={`rounded-lg p-4 text-sm ${
           c.estado === "rechazado" || c.estado === "error"
             ? "bg-rose-50 text-rose-800 border border-rose-200"
@@ -155,13 +205,25 @@ export function ComprobanteDetalle() {
           )}
 
           <div className="mt-6 space-y-2">
-            <button className="btn-primary w-full" onClick={() => verPDF()}>
+            <button
+              className="btn-primary w-full disabled:opacity-50"
+              onClick={() => verPDF()}
+              disabled={ESTADOS_EN_PROCESO.has(c.estado)}
+            >
               Ver PDF
             </button>
-            <button className="btn-ghost w-full" onClick={() => descargar("xml")}>
+            <button
+              className="btn-ghost w-full disabled:opacity-50"
+              onClick={() => descargar("xml")}
+              disabled={ESTADOS_EN_PROCESO.has(c.estado)}
+            >
               Descargar XML firmado
             </button>
-            <button className="btn-ghost w-full" onClick={() => descargar("cdr")}>
+            <button
+              className="btn-ghost w-full disabled:opacity-50"
+              onClick={() => descargar("cdr")}
+              disabled={ESTADOS_EN_PROCESO.has(c.estado)}
+            >
               Descargar CDR (.zip)
             </button>
           </div>

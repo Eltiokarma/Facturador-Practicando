@@ -22,6 +22,7 @@ import (
 	httpapi "github.com/eltiokarma/facturador/apps/api/internal/http"
 	"github.com/eltiokarma/facturador/apps/api/internal/motor"
 	"github.com/eltiokarma/facturador/apps/api/internal/pdf"
+	"github.com/eltiokarma/facturador/apps/api/internal/queue"
 	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
 	"github.com/eltiokarma/facturador/apps/api/internal/users"
 )
@@ -77,18 +78,32 @@ func main() {
 		logger.Error("comprobantes.NewStore", "err", err)
 		os.Exit(1)
 	}
-
-	signer := auth.NewSigner(cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
-	mot := motor.New(cfg.MotorURL)
-
 	clientesStore := catalogos.NewClientesStore(pool)
 	productosStore := catalogos.NewProductosStore(pool)
 	pdfBuilder := pdf.New(ten)
 
-	authHandler := &httpapi.AuthHandler{Signer: signer, Users: usersStore, Logger: logger}
-	facturasHandler := &httpapi.FacturasHandler{
+	signer := auth.NewSigner(cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
+	mot := motor.New(cfg.MotorURL)
+
+	// --- Cola asíncrona ---
+	queueClient := queue.NewClient(cfg.RedisAddr)
+	defer queueClient.Close()
+
+	emitHandler := &queue.EmitHandler{
 		Cfg: cfg, Tenant: ten, Cert: mat, Motor: mot,
 		Comprobantes: compStore, Logger: logger,
+	}
+	queueServer := queue.NewServer(cfg.RedisAddr, 5, logger)
+	if err := queueServer.Start(emitHandler); err != nil {
+		logger.Error("queue.Start", "err", err)
+		os.Exit(1)
+	}
+	logger.Info("worker de cola arrancado", "redis", cfg.RedisAddr)
+
+	// --- HTTP ---
+	authHandler := &httpapi.AuthHandler{Signer: signer, Users: usersStore, Logger: logger}
+	facturasHandler := &httpapi.FacturasHandler{
+		Cfg: cfg, Comprobantes: compStore, Queue: queueClient, Logger: logger,
 	}
 	compHandler := &httpapi.ComprobantesHandler{Store: compStore, PDFBuilder: pdfBuilder, Logger: logger}
 	clientesHandler := &httpapi.ClientesHandler{Store: clientesStore, Logger: logger}
@@ -137,14 +152,13 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("shutdown falló", "err", err)
+		logger.Error("HTTP shutdown", "err", err)
 	}
+	queueServer.Shutdown()
 	pool.Close()
 	logger.Info("apagado limpio")
 }
 
-// ensureTenant crea o actualiza la fila de la tabla tenants que corresponde
-// al RUC configurado por env. Devuelve el UUID del tenant.
 func ensureTenant(ctx context.Context, pool *pgxpool.Pool, t *tenant.Tenant) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := pool.QueryRow(ctx, `
