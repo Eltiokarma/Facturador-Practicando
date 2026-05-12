@@ -32,6 +32,27 @@ export type Item = {
   afectacion_igv: string;
 };
 
+export type Cliente = {
+  id?: string;
+  tipo_doc: string;
+  num_doc: string;
+  razon_social: string;
+  direccion?: string;
+  email?: string;
+  telefono?: string;
+  created_at?: string;
+};
+
+export type Producto = {
+  id?: string;
+  codigo?: string;
+  descripcion: string;
+  unidad: string;
+  valor_unitario: number;
+  afectacion_igv: string;
+  created_at?: string;
+};
+
 export type Totales = {
   gravado: number;
   exonerado: number;

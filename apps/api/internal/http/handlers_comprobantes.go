@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -11,11 +12,13 @@ import (
 
 	"github.com/eltiokarma/facturador/apps/api/internal/auth"
 	"github.com/eltiokarma/facturador/apps/api/internal/comprobantes"
+	"github.com/eltiokarma/facturador/apps/api/internal/pdf"
 )
 
 type ComprobantesHandler struct {
-	Store  *comprobantes.Store
-	Logger *slog.Logger
+	Store      *comprobantes.Store
+	PDFBuilder *pdf.Builder
+	Logger     *slog.Logger
 }
 
 func (h *ComprobantesHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +76,30 @@ func (h *ComprobantesHandler) XML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	_, _ = w.Write(data)
+}
+
+func (h *ComprobantesHandler) PDF(w http.ResponseWriter, r *http.Request) {
+	tenantID, _ := auth.TenantIDFrom(r.Context())
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "id_invalido"})
+		return
+	}
+	d, err := h.Store.Get(r.Context(), tenantID, id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no_encontrado"})
+		return
+	}
+	data, err := h.PDFBuilder.Render(d)
+	if err != nil {
+		h.Logger.Error("pdf.Render", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pdf_falló"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf(`inline; filename="%s-%d.pdf"`, d.Serie, d.Correlativo))
 	_, _ = w.Write(data)
 }
 

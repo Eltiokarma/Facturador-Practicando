@@ -68,21 +68,22 @@ type SaveInput struct {
 }
 
 type Comprobante struct {
-	ID            uuid.UUID  `json:"id"`
-	Tipo          string     `json:"tipo"`
-	Serie         string     `json:"serie"`
-	Correlativo   int64      `json:"correlativo"`
-	FechaEmision  string     `json:"fecha_emision"`
-	Moneda        string     `json:"moneda"`
-	ReceptorDoc   string     `json:"receptor_doc"`
-	ReceptorRazon string     `json:"receptor_razon"`
-	Total         float64    `json:"total"`
-	IGV           float64    `json:"igv"`
-	Estado        string     `json:"estado"`
-	SunatCodigo   string     `json:"sunat_codigo,omitempty"`
-	SunatMensaje  string     `json:"sunat_mensaje,omitempty"`
-	HashCPE       string     `json:"hash_cpe,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID              uuid.UUID `json:"id"`
+	Tipo            string    `json:"tipo"`
+	Serie           string    `json:"serie"`
+	Correlativo     int64     `json:"correlativo"`
+	FechaEmision    string    `json:"fecha_emision"`
+	Moneda          string    `json:"moneda"`
+	ReceptorTipoDoc string    `json:"receptor_tipo_doc"`
+	ReceptorDoc     string    `json:"receptor_doc"`
+	ReceptorRazon   string    `json:"receptor_razon"`
+	Total           float64   `json:"total"`
+	IGV             float64   `json:"igv"`
+	Estado          string    `json:"estado"`
+	SunatCodigo     string    `json:"sunat_codigo,omitempty"`
+	SunatMensaje    string    `json:"sunat_mensaje,omitempty"`
+	HashCPE         string    `json:"hash_cpe,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 type Detalle struct {
@@ -166,7 +167,7 @@ func (s *Store) List(ctx context.Context, f ListFilter) ([]Comprobante, error) {
 	}
 	query := `
 		SELECT id, tipo_documento, serie, correlativo, fecha_emision, moneda,
-		       receptor_num_doc, receptor_razon, total, igv, estado,
+		       receptor_tipo_doc, receptor_num_doc, receptor_razon, total, igv, estado,
 		       COALESCE(sunat_codigo,''), COALESCE(sunat_mensaje,''),
 		       COALESCE(hash_cpe,''), created_at
 		FROM comprobantes
@@ -189,7 +190,7 @@ func (s *Store) List(ctx context.Context, f ListFilter) ([]Comprobante, error) {
 		var c Comprobante
 		var fecha time.Time
 		if err := rows.Scan(&c.ID, &c.Tipo, &c.Serie, &c.Correlativo, &fecha, &c.Moneda,
-			&c.ReceptorDoc, &c.ReceptorRazon, &c.Total, &c.IGV, &c.Estado,
+			&c.ReceptorTipoDoc, &c.ReceptorDoc, &c.ReceptorRazon, &c.Total, &c.IGV, &c.Estado,
 			&c.SunatCodigo, &c.SunatMensaje, &c.HashCPE, &c.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -206,13 +207,13 @@ func (s *Store) Get(ctx context.Context, tenantID, id uuid.UUID) (*Detalle, erro
 	var fecha time.Time
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, tipo_documento, serie, correlativo, fecha_emision, moneda,
-		       receptor_num_doc, receptor_razon, total, igv, estado,
+		       receptor_tipo_doc, receptor_num_doc, receptor_razon, total, igv, estado,
 		       COALESCE(sunat_codigo,''), COALESCE(sunat_mensaje,''),
 		       COALESCE(hash_cpe,''), created_at,
 		       total_gravado, total_exonerado, total_inafecto, payload
 		FROM comprobantes WHERE tenant_id = $1 AND id = $2
 	`, tenantID, id).Scan(&d.ID, &d.Tipo, &d.Serie, &d.Correlativo, &fecha, &d.Moneda,
-		&d.ReceptorDoc, &d.ReceptorRazon, &d.Total, &d.IGV, &d.Estado,
+		&d.ReceptorTipoDoc, &d.ReceptorDoc, &d.ReceptorRazon, &d.Total, &d.IGV, &d.Estado,
 		&d.SunatCodigo, &d.SunatMensaje, &d.HashCPE, &d.CreatedAt,
 		&d.Gravado, &d.Exonerado, &d.Inafecto, &d.Payload)
 	if errors.Is(err, pgx.ErrNoRows) {

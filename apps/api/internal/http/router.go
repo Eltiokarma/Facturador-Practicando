@@ -21,6 +21,8 @@ type Deps struct {
 	Auth         *AuthHandler
 	Facturas     *FacturasHandler
 	Comprobantes *ComprobantesHandler
+	Clientes     *ClientesHandler
+	Productos    *ProductosHandler
 	MotorPing    func() error
 }
 
@@ -66,6 +68,19 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/comprobantes/{id}", d.Comprobantes.Get)
 				r.Get("/comprobantes/{id}/xml", d.Comprobantes.XML)
 				r.Get("/comprobantes/{id}/cdr", d.Comprobantes.CDR)
+				r.Get("/comprobantes/{id}/pdf", d.Comprobantes.PDF)
+			}
+			if d.Clientes != nil {
+				r.Get("/clientes", d.Clientes.List)
+				r.Post("/clientes", d.Clientes.Upsert)
+				r.Put("/clientes/{id}", d.Clientes.Upsert)
+				r.Delete("/clientes/{id}", d.Clientes.Delete)
+			}
+			if d.Productos != nil {
+				r.Get("/productos", d.Productos.List)
+				r.Post("/productos", d.Productos.Upsert)
+				r.Put("/productos/{id}", d.Productos.Upsert)
+				r.Delete("/productos/{id}", d.Productos.Delete)
 			}
 		})
 	})

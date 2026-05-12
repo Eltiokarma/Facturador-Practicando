@@ -14,12 +14,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/eltiokarma/facturador/apps/api/internal/auth"
+	"github.com/eltiokarma/facturador/apps/api/internal/catalogos"
 	"github.com/eltiokarma/facturador/apps/api/internal/cert"
 	"github.com/eltiokarma/facturador/apps/api/internal/comprobantes"
 	"github.com/eltiokarma/facturador/apps/api/internal/config"
 	"github.com/eltiokarma/facturador/apps/api/internal/db"
 	httpapi "github.com/eltiokarma/facturador/apps/api/internal/http"
 	"github.com/eltiokarma/facturador/apps/api/internal/motor"
+	"github.com/eltiokarma/facturador/apps/api/internal/pdf"
 	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
 	"github.com/eltiokarma/facturador/apps/api/internal/users"
 )
@@ -79,16 +81,23 @@ func main() {
 	signer := auth.NewSigner(cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
 	mot := motor.New(cfg.MotorURL)
 
+	clientesStore := catalogos.NewClientesStore(pool)
+	productosStore := catalogos.NewProductosStore(pool)
+	pdfBuilder := pdf.New(ten)
+
 	authHandler := &httpapi.AuthHandler{Signer: signer, Users: usersStore, Logger: logger}
 	facturasHandler := &httpapi.FacturasHandler{
 		Cfg: cfg, Tenant: ten, Cert: mat, Motor: mot,
 		Comprobantes: compStore, Logger: logger,
 	}
-	compHandler := &httpapi.ComprobantesHandler{Store: compStore, Logger: logger}
+	compHandler := &httpapi.ComprobantesHandler{Store: compStore, PDFBuilder: pdfBuilder, Logger: logger}
+	clientesHandler := &httpapi.ClientesHandler{Store: clientesStore, Logger: logger}
+	productosHandler := &httpapi.ProductosHandler{Store: productosStore, Logger: logger}
 
 	router := httpapi.NewRouter(httpapi.Deps{
 		Cfg: cfg, Logger: logger, Signer: signer,
 		Auth: authHandler, Facturas: facturasHandler, Comprobantes: compHandler,
+		Clientes: clientesHandler, Productos: productosHandler,
 		MotorPing: func() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()

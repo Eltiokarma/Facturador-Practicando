@@ -2,7 +2,8 @@ import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api, ApiError } from "../api/client";
-import { Item } from "../types";
+import { Autocomplete } from "../components/Autocomplete";
+import { Cliente, Item, Producto } from "../types";
 
 type Tipo = "01" | "03";
 
@@ -42,7 +43,16 @@ function calcular(items: Item[]) {
     return { sub, igv: lineIgv, precioUnit, total: round2(sub + lineIgv) };
   });
   const total = round2(gravado + exonerado + inafecto + igv);
-  return { lineas, totales: { gravado: round2(gravado), exonerado: round2(exonerado), inafecto: round2(inafecto), igv: round2(igv), total } };
+  return {
+    lineas,
+    totales: {
+      gravado: round2(gravado),
+      exonerado: round2(exonerado),
+      inafecto: round2(inafecto),
+      igv: round2(igv),
+      total,
+    },
+  };
 }
 
 function round2(v: number): number {
@@ -61,6 +71,7 @@ export function NuevaFactura() {
   const [receptorDir, setReceptorDir] = useState("");
   const [items, setItems] = useState<Item[]>([emptyItem()]);
   const [submitting, setSubmitting] = useState(false);
+  const [guardarCliente, setGuardarCliente] = useState(true);
 
   const calc = useMemo(() => calcular(items), [items]);
 
@@ -81,6 +92,35 @@ export function NuevaFactura() {
   function addItem() { setItems((cur) => [...cur, emptyItem()]); }
   function rmItem(idx: number) {
     setItems((cur) => cur.length === 1 ? cur : cur.filter((_, i) => i !== idx));
+  }
+
+  async function buscarClientes(q: string): Promise<Cliente[]> {
+    const params = new URLSearchParams({ limit: "8" });
+    if (q) params.set("q", q);
+    const r = await api<{ items: Cliente[] }>(`/api/v1/clientes?${params}`);
+    return r.items || [];
+  }
+  function pickCliente(c: Cliente) {
+    setReceptorTipoDoc(c.tipo_doc);
+    setReceptorNumDoc(c.num_doc);
+    setReceptorRazon(c.razon_social);
+    setReceptorDir(c.direccion || "");
+  }
+
+  async function buscarProductos(q: string): Promise<Producto[]> {
+    const params = new URLSearchParams({ limit: "8" });
+    if (q) params.set("q", q);
+    const r = await api<{ items: Producto[] }>(`/api/v1/productos?${params}`);
+    return r.items || [];
+  }
+  function pickProducto(idx: number, p: Producto) {
+    updateItem(idx, {
+      codigo: p.codigo || "",
+      descripcion: p.descripcion,
+      unidad: p.unidad,
+      valor_unitario: p.valor_unitario,
+      afectacion_igv: p.afectacion_igv,
+    });
   }
 
   async function onSubmit(e: FormEvent) {
@@ -127,6 +167,19 @@ export function NuevaFactura() {
           })),
         },
       });
+
+      // Si quedó aceptado, guardar el cliente al catálogo si está la opción
+      if (guardarCliente && (resp.estado === "aceptado" || resp.estado === "aceptado_con_obs")) {
+        api("/api/v1/clientes", {
+          body: {
+            tipo_doc: receptorTipoDoc,
+            num_doc: receptorNumDoc.trim(),
+            razon_social: receptorRazon.trim(),
+            direccion: receptorDir.trim() || undefined,
+          },
+        }).catch(() => { /* best effort */ });
+      }
+
       if (resp.estado === "aceptado") {
         toast.success(`SUNAT aceptó ${resp.serie}-${resp.correlativo}`);
       } else if (resp.estado === "aceptado_con_obs") {
@@ -148,57 +201,35 @@ export function NuevaFactura() {
   return (
     <form onSubmit={onSubmit} className="space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          Nuevo comprobante
-        </h1>
+        <h1 className="text-2xl font-semibold text-slate-900">Nuevo comprobante</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Los totales se recalculan en SUNAT — esto es solo previsualización.
+          El sistema recalcula totales server-side — esto es previsualización.
         </p>
       </header>
 
       <section className="card p-6 space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Tipo y serie
-        </h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Tipo y serie</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>
             <label className="label">Tipo</label>
-            <select
-              className="input"
-              value={tipo}
-              onChange={(e) => setTipoCambiar(e.target.value as Tipo)}
-            >
+            <select className="input" value={tipo} onChange={(e) => setTipoCambiar(e.target.value as Tipo)}>
               <option value="01">Factura</option>
               <option value="03">Boleta</option>
             </select>
           </div>
           <div>
             <label className="label">Serie</label>
-            <input
-              className="input"
-              value={serie}
-              onChange={(e) => setSerie(e.target.value.toUpperCase().slice(0, 4))}
-              maxLength={4}
-              required
-            />
+            <input className="input" value={serie} maxLength={4} required
+              onChange={(e) => setSerie(e.target.value.toUpperCase().slice(0, 4))} />
           </div>
           <div>
             <label className="label">Fecha emisión</label>
-            <input
-              type="date"
-              className="input"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              required
-            />
+            <input type="date" className="input" value={fecha}
+              onChange={(e) => setFecha(e.target.value)} required />
           </div>
           <div>
             <label className="label">Moneda</label>
-            <select
-              className="input"
-              value={moneda}
-              onChange={(e) => setMoneda(e.target.value)}
-            >
+            <select className="input" value={moneda} onChange={(e) => setMoneda(e.target.value)}>
               <option value="PEN">PEN (Soles)</option>
               <option value="USD">USD (Dólares)</option>
             </select>
@@ -207,18 +238,24 @@ export function NuevaFactura() {
       </section>
 
       <section className="card p-6 space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Receptor
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Cliente</h2>
+          <label className="text-xs text-slate-500 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={guardarCliente}
+              onChange={(e) => setGuardarCliente(e.target.checked)}
+              className="rounded"
+            />
+            Guardar al catálogo
+          </label>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="label">Tipo doc.</label>
-            <select
-              className="input"
-              value={receptorTipoDoc}
+            <select className="input" value={receptorTipoDoc}
               onChange={(e) => setReceptorTipoDoc(e.target.value)}
-              disabled={tipo === "01"}
-            >
+              disabled={tipo === "01"}>
               {tipo === "01" ? (
                 <option value="6">RUC</option>
               ) : (
@@ -234,106 +271,90 @@ export function NuevaFactura() {
           </div>
           <div>
             <label className="label">Número</label>
-            <input
-              className="input"
-              value={receptorNumDoc}
-              onChange={(e) => setReceptorNumDoc(e.target.value.replace(/\D/g, ""))}
+            <Autocomplete<Cliente>
               placeholder={tipo === "01" ? "20XXXXXXXXX" : "12345678"}
-              required
+              value={receptorNumDoc}
+              onValueChange={(v) => setReceptorNumDoc(v.replace(/\D/g, ""))}
+              search={(q) => buscarClientes(q)}
+              keyOf={(c) => c.id || c.num_doc}
+              renderOption={(c) => (
+                <>
+                  <div className="font-medium text-slate-900">{c.razon_social}</div>
+                  <div className="text-xs text-slate-500">{c.num_doc}</div>
+                </>
+              )}
+              onSelect={pickCliente}
             />
           </div>
-          <div className="sm:col-span-1">
+          <div>
             <label className="label">Razón / Nombre</label>
-            <input
-              className="input"
-              value={receptorRazon}
-              onChange={(e) => setReceptorRazon(e.target.value)}
-              required
-            />
+            <input className="input" value={receptorRazon}
+              onChange={(e) => setReceptorRazon(e.target.value)} required />
           </div>
         </div>
         <div>
           <label className="label">Dirección (opcional)</label>
-          <input
-            className="input"
-            value={receptorDir}
-            onChange={(e) => setReceptorDir(e.target.value)}
-          />
+          <input className="input" value={receptorDir}
+            onChange={(e) => setReceptorDir(e.target.value)} />
         </div>
       </section>
 
       <section className="card p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Ítems
-          </h2>
-          <button type="button" className="btn-ghost text-xs" onClick={addItem}>
-            + Agregar ítem
-          </button>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Ítems</h2>
+          <button type="button" className="btn-ghost text-xs" onClick={addItem}>+ Agregar ítem</button>
         </div>
         <div className="space-y-3">
           {items.map((it, idx) => (
-            <div
-              key={idx}
-              className="rounded-lg border border-slate-200 p-4 bg-slate-50/50"
-            >
+            <div key={idx} className="rounded-lg border border-slate-200 p-4 bg-slate-50/50">
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-12 sm:col-span-5">
                   <label className="label">Descripción</label>
-                  <input
-                    className="input"
+                  <Autocomplete<Producto>
+                    placeholder="Buscar producto o escribir uno nuevo…"
                     value={it.descripcion}
-                    onChange={(e) => updateItem(idx, { descripcion: e.target.value })}
-                    placeholder="Servicio de…"
-                    required
+                    onValueChange={(v) => updateItem(idx, { descripcion: v })}
+                    search={(q) => buscarProductos(q)}
+                    keyOf={(p) => p.id || p.descripcion}
+                    renderOption={(p) => (
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="font-medium text-slate-900">{p.descripcion}</div>
+                          {p.codigo && <div className="text-xs text-slate-500">{p.codigo}</div>}
+                        </div>
+                        <div className="text-sm text-slate-700 tabular-nums">
+                          {p.valor_unitario.toFixed(2)}
+                        </div>
+                      </div>
+                    )}
+                    onSelect={(p) => pickProducto(idx, p)}
                   />
                 </div>
                 <div className="col-span-4 sm:col-span-2">
                   <label className="label">Cantidad</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="input"
+                  <input type="number" step="0.01" min="0" className="input"
                     value={it.cantidad}
-                    onChange={(e) => updateItem(idx, { cantidad: +e.target.value })}
-                    required
-                  />
+                    onChange={(e) => updateItem(idx, { cantidad: +e.target.value })} required />
                 </div>
                 <div className="col-span-4 sm:col-span-2">
-                  <label className="label">V. Unit. (sin IGV)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="input"
+                  <label className="label">V. Unit.</label>
+                  <input type="number" step="0.01" min="0" className="input"
                     value={it.valor_unitario}
-                    onChange={(e) => updateItem(idx, { valor_unitario: +e.target.value })}
-                    required
-                  />
+                    onChange={(e) => updateItem(idx, { valor_unitario: +e.target.value })} required />
                 </div>
                 <div className="col-span-4 sm:col-span-2">
                   <label className="label">IGV</label>
-                  <select
-                    className="input"
-                    value={it.afectacion_igv}
-                    onChange={(e) => updateItem(idx, { afectacion_igv: e.target.value })}
-                  >
+                  <select className="input" value={it.afectacion_igv}
+                    onChange={(e) => updateItem(idx, { afectacion_igv: e.target.value })}>
                     <option value="10">Gravado 18%</option>
                     <option value="20">Exonerado</option>
                     <option value="30">Inafecto</option>
                   </select>
                 </div>
                 <div className="col-span-12 sm:col-span-1 flex sm:items-end">
-                  <button
-                    type="button"
-                    onClick={() => rmItem(idx)}
+                  <button type="button" onClick={() => rmItem(idx)}
                     className="btn-ghost w-full text-rose-600"
-                    disabled={items.length === 1}
-                    title="Quitar ítem"
-                  >
-                    ✕
-                  </button>
+                    disabled={items.length === 1} title="Quitar ítem">✕</button>
                 </div>
                 <div className="col-span-12 text-right text-sm text-slate-600 tabular-nums">
                   Subtotal {calc.lineas[idx]?.sub.toFixed(2)} · IGV{" "}
@@ -365,9 +386,7 @@ export function NuevaFactura() {
       </section>
 
       <div className="flex items-center justify-end gap-3">
-        <button type="button" className="btn-ghost" onClick={() => nav(-1)}>
-          Cancelar
-        </button>
+        <button type="button" className="btn-ghost" onClick={() => nav(-1)}>Cancelar</button>
         <button type="submit" className="btn-primary" disabled={submitting}>
           {submitting ? "Enviando a SUNAT…" : "Emitir comprobante"}
         </button>

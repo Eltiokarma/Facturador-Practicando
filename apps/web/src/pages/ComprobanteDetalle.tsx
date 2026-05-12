@@ -38,6 +38,19 @@ export function ComprobanteDetalle() {
     }
   }
 
+  async function verPDF() {
+    if (!id) return;
+    try {
+      const blob = await apiBlob(`/api/v1/comprobantes/${id}/pdf`);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      // No revocamos el URL inmediatamente para que el visor del navegador pueda leerlo.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      toast.error("No se pudo generar el PDF");
+    }
+  }
+
   if (loading) {
     return <div className="text-slate-500 text-sm">Cargando…</div>;
   }
@@ -142,6 +155,9 @@ export function ComprobanteDetalle() {
           )}
 
           <div className="mt-6 space-y-2">
+            <button className="btn-primary w-full" onClick={() => verPDF()}>
+              Ver PDF
+            </button>
             <button className="btn-ghost w-full" onClick={() => descargar("xml")}>
               Descargar XML firmado
             </button>

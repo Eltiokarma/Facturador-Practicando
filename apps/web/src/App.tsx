@@ -6,6 +6,8 @@ import { Dashboard } from "./pages/Dashboard";
 import { NuevaFactura } from "./pages/NuevaFactura";
 import { Comprobantes } from "./pages/Comprobantes";
 import { ComprobanteDetalle } from "./pages/ComprobanteDetalle";
+import { Clientes } from "./pages/Clientes";
+import { Productos } from "./pages/Productos";
 
 export function App() {
   return (
@@ -24,6 +26,8 @@ export function App() {
         <Route path="emitir" element={<NuevaFactura />} />
         <Route path="comprobantes" element={<Comprobantes />} />
         <Route path="comprobantes/:id" element={<ComprobanteDetalle />} />
+        <Route path="clientes" element={<Clientes />} />
+        <Route path="productos" element={<Productos />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
