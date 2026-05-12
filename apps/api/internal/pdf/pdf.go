@@ -21,11 +21,10 @@ import (
 	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
 )
 
-type Builder struct {
-	Tenant *tenant.Tenant
-}
+// Builder es stateless. Cada llamada a Render() recibe el tenant emisor.
+type Builder struct{}
 
-func New(t *tenant.Tenant) *Builder { return &Builder{Tenant: t} }
+func New() *Builder { return &Builder{} }
 
 func labelTipo(t string) string {
 	switch t {
@@ -42,8 +41,9 @@ func labelTipo(t string) string {
 	}
 }
 
-// Render produce el PDF en bytes a partir del detalle del comprobante.
-func (b *Builder) Render(d *comprobantes.Detalle) ([]byte, error) {
+// Render produce el PDF en bytes a partir del detalle del comprobante
+// emitido por el tenant t.
+func (b *Builder) Render(t *tenant.Record, d *comprobantes.Detalle) ([]byte, error) {
 	pdf := fpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(15, 15, 15)
 	pdf.SetAutoPageBreak(true, 15)
@@ -53,13 +53,13 @@ func (b *Builder) Render(d *comprobantes.Detalle) ([]byte, error) {
 	// Columna izquierda: datos del emisor
 	pdf.SetFont("Helvetica", "B", 13)
 	pdf.SetTextColor(15, 23, 42)
-	pdf.CellFormat(115, 6, tr(b.Tenant.RazonSocial), "", 2, "L", false, 0, "")
+	pdf.CellFormat(115, 6, tr(t.RazonSocial), "", 2, "L", false, 0, "")
 	pdf.SetFont("Helvetica", "", 9)
 	pdf.SetTextColor(71, 85, 105)
-	pdf.CellFormat(115, 5, tr("RUC "+b.Tenant.RUC), "", 2, "L", false, 0, "")
-	pdf.CellFormat(115, 5, tr(b.Tenant.DireccionFiscal), "", 2, "L", false, 0, "")
-	if b.Tenant.NombreComercial != "" && b.Tenant.NombreComercial != b.Tenant.RazonSocial {
-		pdf.CellFormat(115, 5, tr(b.Tenant.NombreComercial), "", 2, "L", false, 0, "")
+	pdf.CellFormat(115, 5, tr("RUC "+t.RUC), "", 2, "L", false, 0, "")
+	pdf.CellFormat(115, 5, tr(t.DireccionFiscal), "", 2, "L", false, 0, "")
+	if t.NombreComercial != "" && t.NombreComercial != t.RazonSocial {
+		pdf.CellFormat(115, 5, tr(t.NombreComercial), "", 2, "L", false, 0, "")
 	}
 
 	// Columna derecha: caja con tipo + número
@@ -74,7 +74,7 @@ func (b *Builder) Render(d *comprobantes.Detalle) ([]byte, error) {
 	pdf.SetFont("Helvetica", "", 8)
 	pdf.SetTextColor(71, 85, 105)
 	pdf.SetXY(135, 24)
-	pdf.CellFormat(60, 4, tr("RUC "+b.Tenant.RUC), "", 0, "C", false, 0, "")
+	pdf.CellFormat(60, 4, tr("RUC "+t.RUC), "", 0, "C", false, 0, "")
 	pdf.SetFont("Helvetica", "B", 14)
 	pdf.SetTextColor(15, 23, 42)
 	pdf.SetXY(135, 29)
@@ -192,7 +192,7 @@ func (b *Builder) Render(d *comprobantes.Detalle) ([]byte, error) {
 
 	// ----------------- QR + HASH -----------------
 	qrPayload := fmt.Sprintf("%s|%s|%s|%d|%.2f|%.2f|%s|%s|%s|%s",
-		b.Tenant.RUC, d.Tipo, d.Serie, d.Correlativo,
+		t.RUC, d.Tipo, d.Serie, d.Correlativo,
 		d.IGV, d.Total, d.FechaEmision,
 		d.ReceptorTipoDoc, d.ReceptorDoc, d.HashCPE,
 	)

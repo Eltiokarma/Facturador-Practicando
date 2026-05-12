@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { TenantSwitcher } from "../components/TenantSwitcher";
 
 const items = [
   { to: "/dashboard", label: "Resumen", icon: "📊" },
@@ -18,11 +19,12 @@ export function Layout() {
   return (
     <div className="min-h-screen flex bg-slate-50">
       <aside className="w-64 shrink-0 border-r border-slate-200 bg-white flex flex-col">
-        <div className="px-6 py-5 border-b border-slate-100">
-          <div className="text-lg font-semibold text-slate-900">Facturador</div>
-          <div className="text-xs text-slate-500 mt-0.5">
-            self-hosted Perú
+        <div className="px-4 py-4 border-b border-slate-100 space-y-3">
+          <div>
+            <div className="text-lg font-semibold text-slate-900">Facturador</div>
+            <div className="text-xs text-slate-500 mt-0.5">self-hosted Perú</div>
           </div>
+          <TenantSwitcher />
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {items.map((it) => (

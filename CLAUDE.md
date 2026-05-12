@@ -124,11 +124,12 @@ facturador/
 9. ✅ PDF imprimible A4 con QR del hash CPE.
 10. ✅ Catálogos de clientes y productos con autocomplete en la emisión.
 11. ✅ Cola asíncrona Redis + asynq con worker en el mismo proceso, polling en la UI.
-12. ⏳ Notas de crédito y débito (próximo grande).
-13. ⏳ Resumen diario de boletas (lo exige SUNAT).
-14. ⏳ Configuración del tenant desde la UI (subir cert, editar datos).
-15. ⏳ Multi-tenant real desde la UI (hoy es single-tenant por env).
-16. ⏳ GRE (obligatoria julio 2026).
+12. ✅ Resumen diario de boletas (RC) con ticket → consulta asíncrona.
+13. ✅ Configuración del tenant desde la UI (datos, modo SUNAT, credenciales SOL cifradas AES-256-GCM).
+14. ✅ Multi-tenant real desde la UI: tabla user_tenants, switch en sidebar, alta de empresas nuevas, cert por tenant con caché en memoria.
+15. ⏳ Notas de crédito y débito (próximo grande).
+16. ⏳ Invitar usuarios a tu tenant (compartir acceso con contador o cajero).
+17. ⏳ GRE (obligatoria julio 2026).
 
 ## 13. Sobre el dueño del proyecto
 

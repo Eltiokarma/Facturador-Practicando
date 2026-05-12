@@ -13,11 +13,13 @@ import (
 	"github.com/eltiokarma/facturador/apps/api/internal/auth"
 	"github.com/eltiokarma/facturador/apps/api/internal/comprobantes"
 	"github.com/eltiokarma/facturador/apps/api/internal/pdf"
+	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
 )
 
 type ComprobantesHandler struct {
 	Store      *comprobantes.Store
 	PDFBuilder *pdf.Builder
+	Tenants    *tenant.Manager
 	Logger     *slog.Logger
 }
 
@@ -91,7 +93,12 @@ func (h *ComprobantesHandler) PDF(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no_encontrado"})
 		return
 	}
-	data, err := h.PDFBuilder.Render(d)
+	ten, err := h.Tenants.Get(r.Context(), tenantID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tenant_no_disponible"})
+		return
+	}
+	data, err := h.PDFBuilder.Render(ten, d)
 	if err != nil {
 		h.Logger.Error("pdf.Render", "err", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pdf_falló"})

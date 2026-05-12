@@ -11,6 +11,7 @@ import { Productos } from "./pages/Productos";
 import { Resumenes } from "./pages/Resumenes";
 import { ResumenDetalle } from "./pages/ResumenDetalle";
 import { Configuracion } from "./pages/Configuracion";
+import { NuevaEmpresa } from "./pages/NuevaEmpresa";
 
 export function App() {
   return (
@@ -34,6 +35,7 @@ export function App() {
         <Route path="resumenes" element={<Resumenes />} />
         <Route path="resumenes/:id" element={<ResumenDetalle />} />
         <Route path="configuracion" element={<Configuracion />} />
+        <Route path="empresas/nueva" element={<NuevaEmpresa />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

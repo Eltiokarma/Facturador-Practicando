@@ -18,8 +18,8 @@ import (
 
 type ResumenHandler struct {
 	Cfg       *config.Config
-	Tenant    *tenant.Tenant
-	Cert      *cert.Material
+	Tenants   *tenant.Manager
+	Certs     *cert.Manager
 	Motor     *motor.Cliente
 	Resumenes *resumenes.Store
 	Client    *Client
@@ -31,7 +31,7 @@ func (h *ResumenHandler) HandleEnviar(ctx context.Context, t *asynq.Task) error 
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
 		return fmt.Errorf("payload inválido: %w", err)
 	}
-	log := h.Logger.With("resumen_id", p.ResumenID)
+	log := h.Logger.With("resumen_id", p.ResumenID, "tenant_id", p.TenantID)
 
 	_ = h.Resumenes.MarcarEnviando(ctx, p.TenantID, p.ResumenID)
 
@@ -44,6 +44,17 @@ func (h *ResumenHandler) HandleEnviar(ctx context.Context, t *asynq.Task) error 
 		return nil
 	}
 
+	ten, err := h.Tenants.Get(ctx, p.TenantID)
+	if err != nil {
+		_ = h.Resumenes.MarcarError(ctx, p.TenantID, p.ResumenID, "tenant no encontrado")
+		return err
+	}
+	mat, err := h.Certs.Get(p.TenantID)
+	if err != nil {
+		_ = h.Resumenes.MarcarError(ctx, p.TenantID, p.ResumenID, "certificado no disponible")
+		return nil
+	}
+
 	boletas, err := h.Resumenes.Boletas(ctx, p.TenantID, p.ResumenID)
 	if err != nil {
 		return err
@@ -52,23 +63,27 @@ func (h *ResumenHandler) HandleEnviar(ctx context.Context, t *asynq.Task) error 
 	docs := make([]map[string]any, 0, len(boletas))
 	for _, b := range boletas {
 		docs = append(docs, map[string]any{
-			"tipo_doc":     "03",
-			"serie":        b.Serie,
-			"correlativo":  b.Correlativo,
-			"receptor_tipo_doc": "1", // mayormente DNI en boletas; el motor decide según el doc
+			"tipo_doc":          "03",
+			"serie":             b.Serie,
+			"correlativo":       b.Correlativo,
+			"receptor_tipo_doc": "1",
 			"receptor_num_doc":  b.ReceptorDoc,
-			"moneda":       b.Moneda,
-			"gravado":      b.Gravado,
-			"exonerado":    b.Exonerado,
-			"inafecto":     b.Inafecto,
-			"igv":          b.IGV,
-			"total":        b.Total,
+			"moneda":            b.Moneda,
+			"gravado":           b.Gravado,
+			"exonerado":         b.Exonerado,
+			"inafecto":          b.Inafecto,
+			"igv":               b.IGV,
+			"total":             b.Total,
 		})
 	}
 
+	modo := ten.SunatMode
+	if modo == "" {
+		modo = string(h.Cfg.SunatMode)
+	}
 	req := motor.ResumenRequest{
-		Modo:   string(h.Cfg.SunatMode),
-		Tenant: tenantPayload(h.Tenant, h.Cert),
+		Modo:   modo,
+		Tenant: tenantPayload(ten, mat),
 		Resumen: map[string]any{
 			"serie":            r.Serie,
 			"correlativo":      r.Correlativo,
@@ -95,8 +110,6 @@ func (h *ResumenHandler) HandleEnviar(ctx context.Context, t *asynq.Task) error 
 		return err
 	}
 	log.Info("resumen enviado, ticket recibido", "ticket", resp.Ticket)
-
-	// Encolar consulta del ticket en 30s
 	return h.Client.EnqueueResumenStatus(ctx, p, 30*time.Second)
 }
 
@@ -105,33 +118,43 @@ func (h *ResumenHandler) HandleStatus(ctx context.Context, t *asynq.Task) error 
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
 		return err
 	}
-	log := h.Logger.With("resumen_id", p.ResumenID)
+	log := h.Logger.With("resumen_id", p.ResumenID, "tenant_id", p.TenantID)
 
 	r, err := h.Resumenes.Get(ctx, p.TenantID, p.ResumenID)
 	if err != nil {
 		return err
 	}
 	if r.Estado != "consultando" {
-		log.Info("resumen ya no está consultando, ignorando", "estado", r.Estado)
 		return nil
 	}
 	if r.Ticket == "" {
 		return fmt.Errorf("resumen sin ticket pero en estado consultando")
 	}
 
+	ten, err := h.Tenants.Get(ctx, p.TenantID)
+	if err != nil {
+		return err
+	}
+	mat, err := h.Certs.Get(p.TenantID)
+	if err != nil {
+		return err
+	}
+
+	modo := ten.SunatMode
+	if modo == "" {
+		modo = string(h.Cfg.SunatMode)
+	}
 	resp, err := h.Motor.ConsultaTicket(ctx, motor.ConsultaTicketRequest{
-		Modo:   string(h.Cfg.SunatMode),
-		Tenant: tenantPayload(h.Tenant, h.Cert),
+		Modo:   modo,
+		Tenant: tenantPayload(ten, mat),
 		Ticket: r.Ticket,
 	})
 	if err != nil {
-		log.Warn("motor.ConsultaTicket falló, reintentando", "err", err)
+		log.Warn("motor.ConsultaTicket falló", "err", err)
 		return err
 	}
 
 	if resp.Estado == "procesando" {
-		// Reintentar en 60s
-		log.Info("ticket aún procesándose, reintentando en 60s")
 		return h.Client.EnqueueResumenStatus(ctx, p, 60*time.Second)
 	}
 
@@ -142,11 +165,11 @@ func (h *ResumenHandler) HandleStatus(ctx context.Context, t *asynq.Task) error 
 	if err := h.Resumenes.AplicarResultado(ctx, p.TenantID, p.ResumenID, estadoFinal, resp.Codigo, resp.Mensaje, resp.CDRZip); err != nil {
 		return err
 	}
-	log.Info("resumen finalizado", "estado", estadoFinal, "codigo", resp.Codigo)
+	log.Info("resumen finalizado", "estado", estadoFinal)
 	return nil
 }
 
-func tenantPayload(t *tenant.Tenant, c *cert.Material) map[string]any {
+func tenantPayload(t *tenant.Record, c *cert.Material) map[string]any {
 	return map[string]any{
 		"ruc":              t.RUC,
 		"razon_social":     t.RazonSocial,

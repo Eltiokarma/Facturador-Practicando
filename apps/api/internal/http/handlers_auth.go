@@ -9,13 +9,15 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/eltiokarma/facturador/apps/api/internal/auth"
+	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
 	"github.com/eltiokarma/facturador/apps/api/internal/users"
 )
 
 type AuthHandler struct {
-	Signer *auth.Signer
-	Users  *users.Store
-	Logger *slog.Logger
+	Signer  *auth.Signer
+	Users   *users.Store
+	Tenants *tenant.Manager
+	Logger  *slog.Logger
 }
 
 type loginReq struct {
@@ -112,6 +114,53 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token_emit"})
 		return
 	}
+	writeJSON(w, http.StatusOK, tokenResp{Access: access, Refresh: refresh, User: toDTO(u)})
+}
+
+type switchReq struct {
+	TenantID uuid.UUID `json:"tenant_id"`
+}
+
+// SwitchTenant emite un nuevo par de tokens apuntando a otro tenant del que
+// el usuario también es miembro.
+func (h *AuthHandler) SwitchTenant(w http.ResponseWriter, r *http.Request) {
+	uid, ok := auth.UserIDFrom(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	var req switchReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "json_invalido"})
+		return
+	}
+	miembro, rol, err := h.Tenants.Store().IsMember(r.Context(), uid, req.TenantID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+		return
+	}
+	if !miembro {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "no_es_miembro"})
+		return
+	}
+	u, err := h.Users.ByID(r.Context(), uid)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "usuario_no_encontrado"})
+		return
+	}
+	access, err := h.Signer.Access(u.ID, req.TenantID, rol)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token_emit"})
+		return
+	}
+	refresh, err := h.Signer.Refresh(u.ID, req.TenantID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "token_emit"})
+		return
+	}
+	// El user struct lleva el rol del tenant actual
+	u.Rol = users.Rol(rol)
+	u.TenantID = req.TenantID
 	writeJSON(w, http.StatusOK, tokenResp{Access: access, Refresh: refresh, User: toDTO(u)})
 }
 

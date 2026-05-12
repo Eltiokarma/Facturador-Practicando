@@ -13,6 +13,7 @@ type TenantConfig = {
   sunat_mode: "beta" | "prod";
   usuario_sol?: string;
   cert_path?: string;
+  has_cert?: boolean;
 };
 
 export function Configuracion() {
@@ -226,24 +227,115 @@ export function Configuracion() {
         </form>
       </section>
 
-      <section className="card p-6">
-        <h2 className="text-lg font-medium text-slate-900 mb-1">Certificado Digital Tributario</h2>
-        <p className="text-xs text-slate-500 mb-3">
-          Tu archivo <code>.p12</code> descargado desde Clave SOL. Se mantiene
-          montado read-only en el container.
-        </p>
-        <dl className="text-sm space-y-1">
-          <div className="flex justify-between">
-            <dt className="text-slate-500">Path en el container:</dt>
-            <dd className="font-mono text-slate-700">{t.cert_path || "(no definido)"}</dd>
-          </div>
-        </dl>
-        <p className="text-xs text-slate-500 mt-4">
-          Para reemplazar el certificado, copiá el nuevo <code>.p12</code> al
-          directorio <code>certs/</code> en el host, actualizá <code>CERT_PASSPHRASE</code>
-          en <code>.env</code> y reiniciá el container.
-        </p>
-      </section>
+      <CertSection tenant={t} esDueno={esDueno} onUploaded={() => window.location.reload()} />
     </div>
   );
 }
+
+const BASE_API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+
+function CertSection({
+  tenant: t, esDueno, onUploaded,
+}: { tenant: TenantConfig; esDueno: boolean; onUploaded: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [passphrase, setPassphrase] = useState("");
+  const [uploading, setUploading] = useState(false);
+
+  async function onUpload(e: FormEvent) {
+    e.preventDefault();
+    if (!file) {
+      toast.error("Seleccioná el archivo .p12");
+      return;
+    }
+    if (!passphrase) {
+      toast.error("La passphrase es obligatoria");
+      return;
+    }
+    const tokens = JSON.parse(localStorage.getItem("facturador.tokens") || "null");
+    if (!tokens?.access) {
+      toast.error("Sesión expirada");
+      return;
+    }
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("passphrase", passphrase);
+    try {
+      const r = await fetch(`${BASE_API}/api/v1/tenant/cert`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tokens.access}` },
+        body: fd,
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body?.detalle || body?.error || `HTTP ${r.status}`);
+      }
+      toast.success("Certificado cargado correctamente");
+      setFile(null);
+      setPassphrase("");
+      onUploaded();
+    } catch (err: any) {
+      toast.error("No se pudo cargar: " + (err?.message || "error"));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <section className="card p-6">
+      <h2 className="text-lg font-medium text-slate-900 mb-1">Certificado Digital Tributario</h2>
+      <p className="text-xs text-slate-500 mb-4">
+        Tu archivo <code>.p12</code> descargado desde Clave SOL. La passphrase se
+        cifra con AES-256-GCM antes de guardarse, para que el container pueda
+        recargar el certificado al reiniciar sin pedirte la clave de nuevo.
+      </p>
+
+      <div className={`mb-4 rounded-lg p-3 text-sm border ${
+        t.has_cert
+          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+          : "bg-rose-50 border-rose-200 text-rose-800"
+      }`}>
+        {t.has_cert ? (
+          <>✓ Certificado cargado y listo para emitir.</>
+        ) : (
+          <>⚠ Esta empresa todavía no tiene certificado. Subilo abajo antes de emitir comprobantes.</>
+        )}
+      </div>
+
+      {esDueno && (
+        <form onSubmit={onUpload} className="space-y-4">
+          <div>
+            <label className="label">Archivo .p12</label>
+            <input
+              type="file"
+              accept=".p12,.pfx,application/x-pkcs12"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-slate-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 cursor-pointer"
+            />
+            {file && (
+              <p className="text-xs text-slate-500 mt-1">
+                Seleccionado: {file.name} ({Math.round(file.size / 1024)} KB)
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="label">Passphrase del .p12</label>
+            <input
+              type="password"
+              className="input"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              placeholder="La que pusiste al generarlo en Clave SOL"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" className="btn-primary" disabled={uploading || !file}>
+              {uploading ? "Subiendo…" : t.has_cert ? "Reemplazar certificado" : "Subir certificado"}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
+

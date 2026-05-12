@@ -60,6 +60,11 @@ func NewRouter(d Deps) http.Handler {
 			r.Use(auth.Middleware(d.Signer))
 			if d.Auth != nil {
 				r.Get("/me", d.Auth.Me)
+				r.Post("/auth/switch-tenant", d.Auth.SwitchTenant)
+			}
+			if d.Tenant != nil {
+				r.Get("/me/tenants", d.Tenant.MisTenants)
+				r.Post("/tenants", d.Tenant.Create)
 			}
 			if d.Facturas != nil {
 				r.Post("/facturas", d.Facturas.Emitir)
@@ -94,6 +99,7 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/tenant", d.Tenant.Get)
 				r.Put("/tenant", d.Tenant.UpdatePerfil)
 				r.Put("/tenant/credenciales", d.Tenant.UpdateCredenciales)
+				r.Post("/tenant/cert", d.Tenant.UploadCert)
 			}
 		})
 	})

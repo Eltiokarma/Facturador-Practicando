@@ -60,9 +60,10 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 - [x] Cola asíncrona Redis con worker, reintentos exponenciales, polling en la UI.
 - [x] Resumen diario consolidado de boletas (RC) con flujo ticket → consulta.
 - [x] Configuración del tenant desde la UI (datos del emisor, modo SUNAT, credenciales SOL cifradas AES-256-GCM).
+- [x] Multi-tenant real con switch en la UI: pertenencias `user_tenants`, selector de empresa en el sidebar, alta de empresas nuevas, switch-tenant que rota tokens JWT.
+- [x] Subir certificado .p12 desde la UI por tenant (un cert por RUC, passphrase cifrada con AES-256-GCM en DB, recarga automática al reiniciar el container).
 - [ ] Notas de crédito y notas de débito.
-- [ ] Subir certificado .p12 desde la UI (hoy: archivo + env, requiere reinicio).
-- [ ] Multi-tenant real con onboarding desde la UI.
+- [ ] Invitar usuarios a tu tenant (compartir acceso con contador / cajero).
 - [ ] PWA offline-first con cola local en IndexedDB.
 - [ ] GRE (obligatoria desde julio 2026).
 - [ ] Notificaciones por email al cliente con el PDF y XML adjuntos.
@@ -90,9 +91,13 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 | GET  | `/api/v1/resumenes/pendientes?fecha=...` | JWT | boletas pendientes de resumir |
 | POST | `/api/v1/resumenes` | JWT | crear y encolar resumen del día |
 | GET  | `/api/v1/resumenes/{id}` | JWT | detalle del resumen con sus boletas |
-| GET  | `/api/v1/tenant` | JWT | datos del tenant (sin clave SOL) |
-| PUT  | `/api/v1/tenant` | JWT dueño | actualizar perfil del tenant |
+| GET  | `/api/v1/tenant` | JWT | datos del tenant actual |
+| PUT  | `/api/v1/tenant` | JWT dueño | actualizar perfil |
 | PUT  | `/api/v1/tenant/credenciales` | JWT dueño | rotar usuario/clave SOL |
+| POST | `/api/v1/tenant/cert` (multipart) | JWT dueño | subir .p12 + passphrase |
+| POST | `/api/v1/tenants` | JWT | crear empresa nueva (te volvés dueño) |
+| GET  | `/api/v1/me/tenants` | JWT | empresas del usuario |
+| POST | `/api/v1/auth/switch-tenant` | JWT | cambiar de empresa (emite nuevos tokens) |
 
 ## Arquitectura de emisión
 

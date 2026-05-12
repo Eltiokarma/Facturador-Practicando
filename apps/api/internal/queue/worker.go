@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -18,8 +19,8 @@ import (
 
 type EmitHandler struct {
 	Cfg          *config.Config
-	Tenant       *tenant.Tenant
-	Cert         *cert.Material
+	Tenants      *tenant.Manager
+	Certs        *cert.Manager
 	Motor        *motor.Cliente
 	Comprobantes *comprobantes.Store
 	Logger       *slog.Logger
@@ -30,7 +31,7 @@ func (h *EmitHandler) Handle(ctx context.Context, t *asynq.Task) error {
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
 		return fmt.Errorf("payload inválido: %w", err)
 	}
-	log := h.Logger.With("comprobante_id", p.ComprobanteID)
+	log := h.Logger.With("comprobante_id", p.ComprobanteID, "tenant_id", p.TenantID)
 
 	_ = h.Comprobantes.MarcarEnviando(ctx, p.TenantID, p.ComprobanteID)
 
@@ -39,14 +40,26 @@ func (h *EmitHandler) Handle(ctx context.Context, t *asynq.Task) error {
 		log.Error("worker: leer comprobante", "err", err)
 		return err
 	}
-
-	// Si ya fue aceptado/rechazado (idempotencia ante reintentos del job)
 	if d.Estado == "aceptado" || d.Estado == "aceptado_con_obs" || d.Estado == "rechazado" {
-		log.Info("worker: comprobante ya finalizado, ignorando job", "estado", d.Estado)
+		log.Info("worker: comprobante ya finalizado, ignorando", "estado", d.Estado)
 		return nil
 	}
 
-	// Reconstruir payload del comprobante desde JSON
+	ten, err := h.Tenants.Get(ctx, p.TenantID)
+	if err != nil {
+		log.Error("worker: leer tenant", "err", err)
+		_ = h.Comprobantes.MarcarError(ctx, p.TenantID, p.ComprobanteID, "tenant no encontrado")
+		return err
+	}
+	mat, err := h.Certs.Get(p.TenantID)
+	if err != nil {
+		// Si no hay cert cargado para este tenant, es un error de
+		// configuración: marcar como error pero no reintentar.
+		log.Error("worker: cert no disponible para este tenant", "err", err)
+		_ = h.Comprobantes.MarcarError(ctx, p.TenantID, p.ComprobanteID, "certificado no disponible — subilo desde Configuración")
+		return nil // no devolver error → asynq no reintenta
+	}
+
 	var pld struct {
 		Tipo          string                 `json:"tipo"`
 		Serie         string                 `json:"serie"`
@@ -59,27 +72,13 @@ func (h *EmitHandler) Handle(ctx context.Context, t *asynq.Task) error {
 		Totales       map[string]any         `json:"totales"`
 	}
 	if err := json.Unmarshal(d.Payload, &pld); err != nil {
-		log.Error("worker: payload corrupto", "err", err)
 		_ = h.Comprobantes.MarcarError(ctx, p.TenantID, p.ComprobanteID, "payload corrupto")
-		return nil // no reintentar — el payload no se va a arreglar solo
+		return nil
 	}
 
 	req := motor.EmitirRequest{
-		Modo: string(h.Cfg.SunatMode),
-		Tenant: map[string]any{
-			"ruc":              h.Tenant.RUC,
-			"razon_social":     h.Tenant.RazonSocial,
-			"nombre_comercial": h.Tenant.NombreComercial,
-			"direccion_fiscal": h.Tenant.DireccionFiscal,
-			"ubigeo":           h.Tenant.Ubigeo,
-			"departamento":     h.Tenant.Departamento,
-			"provincia":        h.Tenant.Provincia,
-			"distrito":         h.Tenant.Distrito,
-			"usuario_sol":      h.Tenant.UsuarioSOL,
-			"clave_sol":        h.Tenant.ClaveSOL,
-			"cert_pem":         h.Cert.CertPEM,
-			"cert_key_pem":     h.Cert.KeyPEM,
-		},
+		Modo:   string(h.Cfg.SunatMode), // fallback global; el tenant manda
+		Tenant: tenantPayload(ten, mat),
 		Comprobante: map[string]any{
 			"tipo":           pld.Tipo,
 			"serie":          pld.Serie,
@@ -92,12 +91,16 @@ func (h *EmitHandler) Handle(ctx context.Context, t *asynq.Task) error {
 			"totales":        pld.Totales,
 		},
 	}
+	// El tenant manda su propio modo
+	if ten.SunatMode == "prod" || ten.SunatMode == "beta" {
+		req.Modo = ten.SunatMode
+	}
 
 	resp, err := h.Motor.Emitir(ctx, req)
 	if err != nil {
 		log.Warn("worker: motor inalcanzable, asynq reintentará", "err", err)
 		_ = h.Comprobantes.MarcarError(ctx, p.TenantID, p.ComprobanteID, err.Error())
-		return err // retorna error → asynq reintenta
+		return err
 	}
 
 	res := comprobantes.Resultado{
@@ -109,7 +112,6 @@ func (h *EmitHandler) Handle(ctx context.Context, t *asynq.Task) error {
 		CDRZipB64:     resp.CDRZip,
 	}
 	if err := h.Comprobantes.AplicarResultado(ctx, p.TenantID, p.ComprobanteID, res, d.Tipo, d.Serie, d.Correlativo); err != nil {
-		log.Error("worker: aplicar resultado", "err", err)
 		return err
 	}
 	log.Info("worker: comprobante procesado", "estado", resp.Estado, "codigo", resp.Codigo)
@@ -123,8 +125,7 @@ func defaultStr(v, def string) string {
 	return v
 }
 
-// Server arranca el server asynq que consume jobs. Bloqueante.
-// Llamarlo en una goroutine separada y usar Shutdown() para terminarlo limpiamente.
+// Server arranca el server asynq que consume jobs.
 type Server struct {
 	srv *asynq.Server
 }
@@ -138,7 +139,6 @@ func NewServer(redisAddr string, concurrency int, logger *slog.Logger) *Server {
 		asynq.Config{
 			Concurrency: concurrency,
 			RetryDelayFunc: func(n int, _ error, _ *asynq.Task) time.Duration {
-				// Backoff exponencial: 2s, 4s, 8s, 16s, 32s, 64s, 128s
 				return time.Duration(1<<(n+1)) * time.Second
 			},
 			Logger: asynqSlog{l: logger},
@@ -159,7 +159,6 @@ func (s *Server) Start(emit *EmitHandler, resumen *ResumenHandler) error {
 
 func (s *Server) Shutdown() { s.srv.Shutdown() }
 
-// asynqSlog adapta slog al logger que asynq espera.
 type asynqSlog struct{ l *slog.Logger }
 
 func (a asynqSlog) Debug(args ...interface{}) { a.l.Debug(joinArgs(args)) }
@@ -178,3 +177,6 @@ func joinArgs(args []any) string {
 	}
 	return out
 }
+
+// ErrNoCert se usa para indicar que un job no se puede procesar por falta de cert.
+var ErrNoCert = errors.New("queue: certificado no disponible para el tenant")

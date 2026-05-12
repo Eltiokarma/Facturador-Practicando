@@ -9,13 +9,11 @@ import (
 
 	"github.com/eltiokarma/facturador/apps/api/internal/auth"
 	"github.com/eltiokarma/facturador/apps/api/internal/comprobantes"
-	"github.com/eltiokarma/facturador/apps/api/internal/config"
 	"github.com/eltiokarma/facturador/apps/api/internal/facturacion"
 	"github.com/eltiokarma/facturador/apps/api/internal/queue"
 )
 
 type FacturasHandler struct {
-	Cfg          *config.Config
 	Comprobantes *comprobantes.Store
 	Queue        *queue.Client
 	Logger       *slog.Logger
@@ -52,7 +50,6 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "json_invalido", "detalle": err.Error()})
 		return
 	}
-
 	if req.Tipo == "" {
 		switch r.URL.Path {
 		case "/api/v1/boletas":
@@ -83,7 +80,6 @@ func (h *FacturasHandler) Emitir(w http.ResponseWriter, r *http.Request) {
 	}
 	f.RecalcularTotales()
 
-	// Payload que el worker usará para construir el request al motor.
 	payloadDoc := map[string]any{
 		"tipo":           f.Tipo,
 		"serie":          f.Serie,
