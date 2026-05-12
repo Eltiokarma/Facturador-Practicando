@@ -71,6 +71,69 @@ func (c *Cliente) Emitir(ctx context.Context, req EmitirRequest) (*EmitirRespons
 	return &out, nil
 }
 
+type ResumenRequest struct {
+	Modo    string         `json:"modo"`
+	Tenant  map[string]any `json:"tenant"`
+	Resumen map[string]any `json:"resumen"`
+}
+
+type ResumenResponse struct {
+	Estado      string `json:"estado"` // "ticket" | "error"
+	Ticket      string `json:"ticket,omitempty"`
+	XMLFirmado  string `json:"xml_firmado,omitempty"`
+	Codigo      string `json:"codigo,omitempty"`
+	Mensaje     string `json:"mensaje,omitempty"`
+}
+
+func (c *Cliente) Resumen(ctx context.Context, req ResumenRequest) (*ResumenResponse, error) {
+	body, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/resumen", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("motor.Resumen: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var out ResumenResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("motor.Resumen: %w (body=%q)", err, raw)
+	}
+	return &out, nil
+}
+
+type ConsultaTicketRequest struct {
+	Modo   string         `json:"modo"`
+	Tenant map[string]any `json:"tenant"`
+	Ticket string         `json:"ticket"`
+}
+
+type ConsultaTicketResponse struct {
+	// "procesando" → SUNAT todavía no terminó, hay que volver a preguntar.
+	// "aceptado", "aceptado_con_obs", "rechazado", "error"
+	Estado  string `json:"estado"`
+	CDRZip  string `json:"cdr_zip,omitempty"`
+	Codigo  string `json:"codigo,omitempty"`
+	Mensaje string `json:"mensaje,omitempty"`
+}
+
+func (c *Cliente) ConsultaTicket(ctx context.Context, req ConsultaTicketRequest) (*ConsultaTicketResponse, error) {
+	body, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/consulta-ticket", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("motor.ConsultaTicket: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var out ConsultaTicketResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("motor.ConsultaTicket: %w (body=%q)", err, raw)
+	}
+	return &out, nil
+}
+
 func (c *Cliente) Health(ctx context.Context) error {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
 	resp, err := c.http.Do(req)

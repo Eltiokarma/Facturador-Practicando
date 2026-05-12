@@ -58,9 +58,10 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 - [x] UI completa estilo Stripe-like: dashboard, emitir, listado, detalle, clientes, productos.
 - [x] Autocomplete de clientes y productos en la pantalla de emisión.
 - [x] Cola asíncrona Redis con worker, reintentos exponenciales, polling en la UI.
+- [x] Resumen diario consolidado de boletas (RC) con flujo ticket → consulta.
+- [x] Configuración del tenant desde la UI (datos del emisor, modo SUNAT, credenciales SOL cifradas AES-256-GCM).
 - [ ] Notas de crédito y notas de débito.
-- [ ] Resumen diario consolidado de boletas (lo exige SUNAT).
-- [ ] Configuración del tenant desde la UI (subir cert, editar datos, modo).
+- [ ] Subir certificado .p12 desde la UI (hoy: archivo + env, requiere reinicio).
 - [ ] Multi-tenant real con onboarding desde la UI.
 - [ ] PWA offline-first con cola local en IndexedDB.
 - [ ] GRE (obligatoria desde julio 2026).
@@ -85,6 +86,13 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 | GET  | `/api/v1/comprobantes/{id}/cdr` | JWT | CDR de SUNAT |
 | GET/POST/PUT/DELETE | `/api/v1/clientes[/:id]` | JWT | catálogo de clientes |
 | GET/POST/PUT/DELETE | `/api/v1/productos[/:id]` | JWT | catálogo de productos |
+| GET  | `/api/v1/resumenes` | JWT | listar resúmenes diarios |
+| GET  | `/api/v1/resumenes/pendientes?fecha=...` | JWT | boletas pendientes de resumir |
+| POST | `/api/v1/resumenes` | JWT | crear y encolar resumen del día |
+| GET  | `/api/v1/resumenes/{id}` | JWT | detalle del resumen con sus boletas |
+| GET  | `/api/v1/tenant` | JWT | datos del tenant (sin clave SOL) |
+| PUT  | `/api/v1/tenant` | JWT dueño | actualizar perfil del tenant |
+| PUT  | `/api/v1/tenant/credenciales` | JWT dueño | rotar usuario/clave SOL |
 
 ## Arquitectura de emisión
 

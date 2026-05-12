@@ -5,8 +5,10 @@ const items = [
   { to: "/dashboard", label: "Resumen", icon: "📊" },
   { to: "/emitir", label: "Emitir comprobante", icon: "🧾" },
   { to: "/comprobantes", label: "Comprobantes", icon: "🗂️" },
+  { to: "/resumenes", label: "Resumen diario", icon: "📅" },
   { to: "/clientes", label: "Clientes", icon: "👥" },
   { to: "/productos", label: "Productos", icon: "📦" },
+  { to: "/configuracion", label: "Configuración", icon: "⚙️" },
 ];
 
 export function Layout() {

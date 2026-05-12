@@ -16,11 +16,20 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-const TypeEmit = "comprobante:emit"
+const (
+	TypeEmit           = "comprobante:emit"
+	TypeResumenEnviar  = "resumen:enviar"
+	TypeResumenStatus  = "resumen:status"
+)
 
 type EmitPayload struct {
 	TenantID      uuid.UUID `json:"tenant_id"`
 	ComprobanteID uuid.UUID `json:"comprobante_id"`
+}
+
+type ResumenPayload struct {
+	TenantID  uuid.UUID `json:"tenant_id"`
+	ResumenID uuid.UUID `json:"resumen_id"`
 }
 
 type Client struct {
@@ -44,6 +53,38 @@ func (c *Client) EnqueueEmit(ctx context.Context, p EmitPayload) error {
 		asynq.MaxRetry(7),
 		asynq.Timeout(2*time.Minute),
 		asynq.Retention(48*time.Hour),
+	)
+	_, err = c.c.EnqueueContext(ctx, task)
+	return err
+}
+
+// EnqueueResumenEnviar programa el envío del resumen diario.
+func (c *Client) EnqueueResumenEnviar(ctx context.Context, p ResumenPayload) error {
+	body, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	task := asynq.NewTask(TypeResumenEnviar, body,
+		asynq.MaxRetry(7),
+		asynq.Timeout(2*time.Minute),
+		asynq.Retention(7*24*time.Hour),
+	)
+	_, err = c.c.EnqueueContext(ctx, task)
+	return err
+}
+
+// EnqueueResumenStatus programa la consulta del ticket de un resumen.
+// delay difiere la ejecución (SUNAT tarda en procesar resúmenes).
+func (c *Client) EnqueueResumenStatus(ctx context.Context, p ResumenPayload, delay time.Duration) error {
+	body, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	task := asynq.NewTask(TypeResumenStatus, body,
+		asynq.MaxRetry(20),
+		asynq.Timeout(1*time.Minute),
+		asynq.Retention(7*24*time.Hour),
+		asynq.ProcessIn(delay),
 	)
 	_, err = c.c.EnqueueContext(ctx, task)
 	return err

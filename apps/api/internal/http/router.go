@@ -23,6 +23,8 @@ type Deps struct {
 	Comprobantes *ComprobantesHandler
 	Clientes     *ClientesHandler
 	Productos    *ProductosHandler
+	Resumenes    *ResumenesHandler
+	Tenant       *TenantHandler
 	MotorPing    func() error
 }
 
@@ -81,6 +83,17 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/productos", d.Productos.Upsert)
 				r.Put("/productos/{id}", d.Productos.Upsert)
 				r.Delete("/productos/{id}", d.Productos.Delete)
+			}
+			if d.Resumenes != nil {
+				r.Get("/resumenes", d.Resumenes.List)
+				r.Get("/resumenes/pendientes", d.Resumenes.Pendientes)
+				r.Post("/resumenes", d.Resumenes.Crear)
+				r.Get("/resumenes/{id}", d.Resumenes.Get)
+			}
+			if d.Tenant != nil {
+				r.Get("/tenant", d.Tenant.Get)
+				r.Put("/tenant", d.Tenant.UpdatePerfil)
+				r.Put("/tenant/credenciales", d.Tenant.UpdateCredenciales)
 			}
 		})
 	})

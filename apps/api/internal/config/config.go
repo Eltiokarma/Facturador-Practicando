@@ -26,6 +26,7 @@ type Config struct {
 	RedisAddr       string
 	MotorURL        string
 	DataDir         string
+	MasterKeyHex    string
 }
 
 func Load() (*Config, error) {
@@ -34,8 +35,12 @@ func Load() (*Config, error) {
 		SunatMode:   SunatMode(strings.ToLower(getEnv("SUNAT_MODE", "beta"))),
 		JWTSecret:   os.Getenv("API_JWT_SECRET"),
 		CORSOrigins: splitCSV(getEnv("API_CORS_ORIGINS", "http://localhost:5173")),
-		MotorURL:    getEnv("MOTOR_URL", "http://motor:8000"),
-		DataDir:     getEnv("DATA_DIR", "/app/data"),
+		MotorURL:     getEnv("MOTOR_URL", "http://motor:8000"),
+		DataDir:      getEnv("DATA_DIR", "/app/data"),
+		MasterKeyHex: os.Getenv("MASTER_KEY"),
+	}
+	if len(c.MasterKeyHex) != 64 {
+		return nil, errors.New("MASTER_KEY debe tener 64 caracteres hex (32 bytes). Generala con: openssl rand -hex 32")
 	}
 
 	if c.SunatMode != SunatModeBeta && c.SunatMode != SunatModeProd {

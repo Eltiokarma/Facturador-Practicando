@@ -4,6 +4,7 @@ declare(strict_types=1);
 require __DIR__ . '/../vendor/autoload.php';
 
 use Facturador\Motor\Emisor;
+use Facturador\Motor\Resumen;
 use Slim\Factory\AppFactory;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -53,6 +54,46 @@ $app->post('/emitir', function (Request $request, Response $response): Response 
     };
 
     $response->getBody()->write((string)json_encode($resultado, JSON_UNESCAPED_UNICODE));
+    return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+});
+
+$app->post('/resumen', function (Request $request, Response $response): Response {
+    $payload = $request->getParsedBody();
+    if (!is_array($payload)) {
+        $response->getBody()->write(json_encode([
+            'estado' => 'error',
+            'codigo' => 'BAD_PAYLOAD',
+            'mensaje' => 'JSON inválido',
+        ]));
+        return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+    }
+    try {
+        $r = (new Resumen())->enviar($payload);
+    } catch (\Throwable $e) {
+        $r = ['estado' => 'error', 'codigo' => 'MOTOR_EXCEPTION', 'mensaje' => $e->getMessage()];
+    }
+    $status = ($r['estado'] ?? 'error') === 'error' ? 500 : 200;
+    $response->getBody()->write((string)json_encode($r, JSON_UNESCAPED_UNICODE));
+    return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+});
+
+$app->post('/consulta-ticket', function (Request $request, Response $response): Response {
+    $payload = $request->getParsedBody();
+    if (!is_array($payload)) {
+        $response->getBody()->write(json_encode([
+            'estado' => 'error',
+            'codigo' => 'BAD_PAYLOAD',
+            'mensaje' => 'JSON inválido',
+        ]));
+        return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+    }
+    try {
+        $r = (new Resumen())->consultarTicket($payload);
+    } catch (\Throwable $e) {
+        $r = ['estado' => 'error', 'codigo' => 'MOTOR_EXCEPTION', 'mensaje' => $e->getMessage()];
+    }
+    $status = ($r['estado'] ?? 'error') === 'error' ? 500 : 200;
+    $response->getBody()->write((string)json_encode($r, JSON_UNESCAPED_UNICODE));
     return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
 });
 

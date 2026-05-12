@@ -147,9 +147,13 @@ func NewServer(redisAddr string, concurrency int, logger *slog.Logger) *Server {
 	return &Server{srv: srv}
 }
 
-func (s *Server) Start(h *EmitHandler) error {
+func (s *Server) Start(emit *EmitHandler, resumen *ResumenHandler) error {
 	mux := asynq.NewServeMux()
-	mux.HandleFunc(TypeEmit, h.Handle)
+	mux.HandleFunc(TypeEmit, emit.Handle)
+	if resumen != nil {
+		mux.HandleFunc(TypeResumenEnviar, resumen.HandleEnviar)
+		mux.HandleFunc(TypeResumenStatus, resumen.HandleStatus)
+	}
 	return s.srv.Start(mux)
 }
 

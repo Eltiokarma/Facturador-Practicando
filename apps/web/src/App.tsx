@@ -8,6 +8,9 @@ import { Comprobantes } from "./pages/Comprobantes";
 import { ComprobanteDetalle } from "./pages/ComprobanteDetalle";
 import { Clientes } from "./pages/Clientes";
 import { Productos } from "./pages/Productos";
+import { Resumenes } from "./pages/Resumenes";
+import { ResumenDetalle } from "./pages/ResumenDetalle";
+import { Configuracion } from "./pages/Configuracion";
 
 export function App() {
   return (
@@ -28,6 +31,9 @@ export function App() {
         <Route path="comprobantes/:id" element={<ComprobanteDetalle />} />
         <Route path="clientes" element={<Clientes />} />
         <Route path="productos" element={<Productos />} />
+        <Route path="resumenes" element={<Resumenes />} />
+        <Route path="resumenes/:id" element={<ResumenDetalle />} />
+        <Route path="configuracion" element={<Configuracion />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

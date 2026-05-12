@@ -18,11 +18,13 @@ import (
 	"github.com/eltiokarma/facturador/apps/api/internal/cert"
 	"github.com/eltiokarma/facturador/apps/api/internal/comprobantes"
 	"github.com/eltiokarma/facturador/apps/api/internal/config"
+	mycrypto "github.com/eltiokarma/facturador/apps/api/internal/crypto"
 	"github.com/eltiokarma/facturador/apps/api/internal/db"
 	httpapi "github.com/eltiokarma/facturador/apps/api/internal/http"
 	"github.com/eltiokarma/facturador/apps/api/internal/motor"
 	"github.com/eltiokarma/facturador/apps/api/internal/pdf"
 	"github.com/eltiokarma/facturador/apps/api/internal/queue"
+	"github.com/eltiokarma/facturador/apps/api/internal/resumenes"
 	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
 	"github.com/eltiokarma/facturador/apps/api/internal/users"
 )
@@ -72,7 +74,43 @@ func main() {
 	}
 	logger.Info("tenant resuelto", "ruc", ten.RUC, "id", tenantID)
 
+	cipher, err := mycrypto.New(cfg.MasterKeyHex)
+	if err != nil {
+		logger.Error("crypto", "err", err)
+		os.Exit(1)
+	}
+
 	usersStore := users.NewStore(pool)
+	tenantStore := tenant.NewStore(pool, cipher)
+	if err := tenantStore.BootstrapCredenciales(ctxStart, tenantID, ten.UsuarioSOL, ten.ClaveSOL); err != nil {
+		logger.Error("bootstrap credenciales", "err", err)
+		os.Exit(1)
+	}
+	// Hidratar credenciales SOL desde DB (por si el operador las cambió en la UI)
+	if rec, err := tenantStore.ByID(ctxStart, tenantID); err == nil {
+		if rec.UsuarioSOL != "" {
+			ten.UsuarioSOL = rec.UsuarioSOL
+		}
+		if rec.ClaveSOL != "" {
+			ten.ClaveSOL = rec.ClaveSOL
+		}
+		if rec.RazonSocial != "" {
+			ten.RazonSocial = rec.RazonSocial
+		}
+		if rec.NombreComercial != "" {
+			ten.NombreComercial = rec.NombreComercial
+		}
+		if rec.DireccionFiscal != "" {
+			ten.DireccionFiscal = rec.DireccionFiscal
+		}
+		if rec.Ubigeo != "" {
+			ten.Ubigeo = rec.Ubigeo
+		}
+		if rec.SunatMode != "" {
+			cfg.SunatMode = config.SunatMode(rec.SunatMode)
+		}
+	}
+
 	compStore, err := comprobantes.NewStore(pool, cfg.DataDir)
 	if err != nil {
 		logger.Error("comprobantes.NewStore", "err", err)
@@ -80,6 +118,7 @@ func main() {
 	}
 	clientesStore := catalogos.NewClientesStore(pool)
 	productosStore := catalogos.NewProductosStore(pool)
+	resumenesStore := resumenes.NewStore(pool)
 	pdfBuilder := pdf.New(ten)
 
 	signer := auth.NewSigner(cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
@@ -93,8 +132,12 @@ func main() {
 		Cfg: cfg, Tenant: ten, Cert: mat, Motor: mot,
 		Comprobantes: compStore, Logger: logger,
 	}
+	resumenHandler := &queue.ResumenHandler{
+		Cfg: cfg, Tenant: ten, Cert: mat, Motor: mot,
+		Resumenes: resumenesStore, Client: queueClient, Logger: logger,
+	}
 	queueServer := queue.NewServer(cfg.RedisAddr, 5, logger)
-	if err := queueServer.Start(emitHandler); err != nil {
+	if err := queueServer.Start(emitHandler, resumenHandler); err != nil {
 		logger.Error("queue.Start", "err", err)
 		os.Exit(1)
 	}
@@ -108,11 +151,14 @@ func main() {
 	compHandler := &httpapi.ComprobantesHandler{Store: compStore, PDFBuilder: pdfBuilder, Logger: logger}
 	clientesHandler := &httpapi.ClientesHandler{Store: clientesStore, Logger: logger}
 	productosHandler := &httpapi.ProductosHandler{Store: productosStore, Logger: logger}
+	resumenesHandler := &httpapi.ResumenesHandler{Store: resumenesStore, Queue: queueClient, Logger: logger}
+	tenantHandler := &httpapi.TenantHandler{Store: tenantStore, Logger: logger}
 
 	router := httpapi.NewRouter(httpapi.Deps{
 		Cfg: cfg, Logger: logger, Signer: signer,
 		Auth: authHandler, Facturas: facturasHandler, Comprobantes: compHandler,
 		Clientes: clientesHandler, Productos: productosHandler,
+		Resumenes: resumenesHandler, Tenant: tenantHandler,
 		MotorPing: func() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
