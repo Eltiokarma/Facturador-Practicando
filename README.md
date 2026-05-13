@@ -28,6 +28,18 @@ Facturador electrónico self-hosted multi-RUC para contribuyentes peruanos. Emit
 
 ## Levantar en local
 
+### Instalación con doble click (recomendado para usuarios no técnicos)
+
+Doble click en el script que corresponda a tu sistema:
+
+| SO | Script |
+|---|---|
+| Windows | `scripts/arrancar-windows.bat` |
+| Mac | `scripts/arrancar-mac.command` |
+| Linux | `scripts/arrancar-linux.sh` |
+
+La primera vez tarda 3-5 minutos; las siguientes, 30 segundos. Al final abre Chrome con la app y un usuario demo (`demo@local` / `demodemo`). Después podés **"Instalar aplicación"** desde Chrome para tener un ícono en el escritorio. Guía completa en `docs/instalar-en-pc.md`.
+
 ### Explorar sin certificado (modo DEMO)
 
 Para conocer el sistema sin necesidad de conseguir certificado SUNAT ni nada más:
