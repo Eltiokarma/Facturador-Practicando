@@ -2,6 +2,15 @@ import { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import {
+  PrinterDevice,
+  detectCapability,
+  getSavedPrinter,
+  pickPrinter,
+  printBytes,
+  saveSavedPrinter,
+} from "../services/printer";
+import { EscPos } from "../services/escpos";
 
 type TenantConfig = {
   id: string;
@@ -254,6 +263,8 @@ export function Configuracion() {
       <CertSection tenant={t} esDueno={esDueno} onUploaded={() => window.location.reload()} />
 
       <GRESection tenant={t} esDueno={esDueno} />
+
+      <PrinterSection />
     </div>
   );
 }
@@ -332,6 +343,133 @@ function GRESection({ tenant: t, esDueno }: { tenant: TenantConfig; esDueno: boo
           </div>
         </form>
       )}
+    </section>
+  );
+}
+
+function PrinterSection() {
+  const [device, setDevice] = useState<PrinterDevice | null>(getSavedPrinter());
+  const [busy, setBusy] = useState(false);
+  const cap = detectCapability();
+
+  async function emparejar() {
+    setBusy(true);
+    try {
+      const p = await pickPrinter();
+      if (p) {
+        setDevice(p);
+        toast.success(`Impresora elegida: ${p.name}`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo emparejar");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function olvidar() {
+    saveSavedPrinter(null);
+    setDevice(null);
+    toast.success("Impresora olvidada");
+  }
+
+  async function prueba() {
+    setBusy(true);
+    try {
+      const p = new EscPos(42).init()
+        .bold(true).size(2, 2).center("PRUEBA DE IMPRESION").size(1, 1).bold(false)
+        .feed(1)
+        .center("Facturador Self-Hosted")
+        .center(new Date().toLocaleString("es-PE"))
+        .feed(1)
+        .hr()
+        .ln("Si ves este ticket completo, la conexion")
+        .ln("con la impresora termica esta lista.")
+        .hr()
+        .feed(3)
+        .cut()
+        .build();
+      await printBytes(p);
+      toast.success("Ticket de prueba enviado");
+    } catch (e: any) {
+      toast.error(e?.message || "Falló la impresión");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card p-6">
+      <h2 className="text-lg font-medium text-slate-900 mb-1">Impresora térmica</h2>
+      <p className="text-xs text-slate-500 mb-4">
+        Para imprimir tickets de 80mm o 58mm a impresoras térmicas Bluetooth
+        (Xprinter, Bixolon, EPSON TM, etc.). El cajero la empareja una vez y
+        cada impresión usa la guardada.
+      </p>
+
+      <div className={`mb-4 rounded-lg p-3 text-sm border ${
+        cap === "unsupported"
+          ? "bg-rose-50 border-rose-200 text-rose-800"
+          : "bg-slate-50 border-slate-200 text-slate-700"
+      }`}>
+        {cap === "native" && (
+          <>App nativa Android — soporte completo de Bluetooth Classic + BLE.</>
+        )}
+        {cap === "web-bluetooth" && (
+          <>
+            Navegador con Web Bluetooth (Chrome / Edge en Android o
+            escritorio). En el primer uso vas a tener que confirmar el
+            permiso de Bluetooth.
+          </>
+        )}
+        {cap === "unsupported" && (
+          <>
+            Tu navegador <strong>no soporta Bluetooth</strong> (Safari y
+            Firefox lo bloquean). Usá Chrome en Android o instalá la app
+            del Facturador desde Play Store.
+          </>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">
+              Impresora actual
+            </div>
+            <div className="font-medium text-slate-900">
+              {device ? device.name : "— ninguna emparejada —"}
+            </div>
+            {device && (
+              <div className="font-mono text-xs text-slate-400 mt-0.5">
+                {device.id}
+              </div>
+            )}
+          </div>
+          {device && (
+            <button onClick={olvidar} className="text-xs text-rose-600 hover:underline">
+              Olvidar
+            </button>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={emparejar}
+            className="btn-primary flex-1"
+            disabled={busy || cap === "unsupported"}
+          >
+            {device ? "Cambiar impresora" : "Emparejar impresora"}
+          </button>
+          <button
+            onClick={prueba}
+            className="btn-ghost"
+            disabled={busy || !device}
+          >
+            Imprimir prueba
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

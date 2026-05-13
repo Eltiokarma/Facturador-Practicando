@@ -2,6 +2,9 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { api, apiBlob } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
+import { detectCapability, getSavedPrinter, printBytes } from "../services/printer";
+import { buildTicket } from "../services/ticket-template";
 import { ComprobanteDetalleT } from "../types";
 import { Modal } from "./Clientes";
 import { EstadoBadge, labelTipo } from "./Dashboard";
@@ -15,6 +18,8 @@ export function ComprobanteDetalle() {
   const [loading, setLoading] = useState(true);
   const [showPayload, setShowPayload] = useState(false);
   const [showAnular, setShowAnular] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const { tenants, user } = useAuth();
   const lastEstado = useRef<string | null>(null);
 
   useEffect(() => {
@@ -85,6 +90,33 @@ export function ComprobanteDetalle() {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch {
       toast.error("No se pudo generar el PDF");
+    }
+  }
+
+  async function imprimirTicket() {
+    if (!c) return;
+    const printer = getSavedPrinter();
+    if (!printer) {
+      toast.error("Primero emparejá una impresora en Configuración → Impresora.");
+      return;
+    }
+    const tenant = tenants.find((t) => t.id === user?.tenant_id);
+    setPrinting(true);
+    try {
+      const bytes = buildTicket(
+        {
+          ruc: tenant?.ruc || "",
+          razon_social: tenant?.razon_social || "",
+        },
+        c,
+        { demoWatermark: !!tenant?.demo_mode },
+      );
+      await printBytes(bytes);
+      toast.success("Ticket enviado a la impresora");
+    } catch (e: any) {
+      toast.error(e?.message || "No se pudo imprimir");
+    } finally {
+      setPrinting(false);
     }
   }
 
@@ -233,6 +265,17 @@ export function ComprobanteDetalle() {
           <div className="mt-6 space-y-2">
             <button
               className="btn-primary w-full disabled:opacity-50"
+              onClick={() => imprimirTicket()}
+              disabled={printing || ESTADOS_EN_PROCESO.has(c.estado) ||
+                (c.estado !== "aceptado" && c.estado !== "aceptado_con_obs")}
+              title={detectCapability() === "unsupported"
+                ? "Tu navegador no soporta Bluetooth; usá Chrome en Android o la app."
+                : ""}
+            >
+              {printing ? "Imprimiendo…" : "🖨 Imprimir ticket"}
+            </button>
+            <button
+              className="btn-ghost w-full disabled:opacity-50"
               onClick={() => verPDF()}
               disabled={ESTADOS_EN_PROCESO.has(c.estado)}
             >

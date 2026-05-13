@@ -23,6 +23,12 @@ apps/web/tsconfig.tsbuildinfo
 *.log
 .DS_Store
 
+# Capacitor: las plataformas nativas se generan localmente con
+# `npx cap add android` (requiere Android SDK). No las commiteamos para
+# evitar diffs gigantes; quien quiera buildear la APK lo regenera.
+apps/web/android/
+apps/web/ios/
+
 # PHP / motor
 vendor/
 apps/motor/vendor/

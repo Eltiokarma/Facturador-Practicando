@@ -80,8 +80,10 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 - [x] Guía de Remisión Electrónica (GRE — tipo 09): modelo completo con destinatario, puntos de partida/llegada, transportista, peso, ítems. Validaciones SUNAT (ubigeo, placa, modalidad pública/privada). OAuth2 real contra api-cpe.sunat.gob.pe vía Greenter\Api; flow ticket → consulta async.
 - [x] Comunicación de baja (anulación): anular factura/boleta/nota aceptada por SUNAT dentro de los 7 días. Flow ticket. Marca el comprobante como anulado cuando SUNAT acepta.
 - [x] Importación masiva desde CSV: clientes y productos. Validación fila por fila, plantilla descargable, resumen de errores.
+- [x] App móvil Android (Capacitor) con impresión Bluetooth térmica ESC/POS (incluye QR del CPE), splash screen, status bar y haptics. La PWA web sigue funcionando con Web Bluetooth API en Chrome.
 - [ ] Invitar usuarios a tu tenant (compartir acceso con contador / cajero).
-- [ ] App móvil (PWA standalone con cola local) para emisión rápida.
+- [ ] Offline real con cola en IndexedDB (hoy la cola es server-side).
+- [ ] App iOS (`npx cap add ios`).
 - [ ] PWA offline-first con cola local en IndexedDB.
 - [ ] GRE (obligatoria desde julio 2026).
 - [ ] Notificaciones por email al cliente con el PDF y XML adjuntos.
