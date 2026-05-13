@@ -80,10 +80,22 @@ export function ComprobanteDetalle() {
       const blob = await apiBlob(`/api/v1/comprobantes/${id}/pdf`);
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
-      // No revocamos el URL inmediatamente para que el visor del navegador pueda leerlo.
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch {
       toast.error("No se pudo generar el PDF");
+    }
+  }
+
+  async function reintentar() {
+    if (!id) return;
+    try {
+      await api(`/api/v1/comprobantes/${id}/reintentar`, { method: "POST" });
+      toast.success("Reencolado. Esperando respuesta de SUNAT…");
+      // Forzar refresh inmediato; el polling tomará el cambio de estado.
+      lastEstado.current = "pendiente";
+      setC((cur) => (cur ? { ...cur, estado: "pendiente" } : cur));
+    } catch (e: any) {
+      toast.error("No se pudo reencolar: " + (e?.body?.detalle || e?.message || "error"));
     }
   }
 
@@ -113,15 +125,27 @@ export function ComprobanteDetalle() {
 
       {ESTADOS_EN_PROCESO.has(c.estado) && (
         <div className="rounded-lg p-4 text-sm bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-3">
-          <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-          <div>
+          <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+          <div className="flex-1">
             <div className="font-medium">
               {c.estado === "error" ? "Reintentando envío a SUNAT…" : "Enviando a SUNAT…"}
             </div>
             <div className="text-xs text-slate-500 mt-0.5">
-              Esto se actualiza solo. SUNAT puede tardar entre 2 y 15 segundos.
+              {c.estado === "error"
+                ? "El sistema reintenta automáticamente con backoff exponencial. Si SUNAT ya volvió podés acelerar el siguiente intento."
+                : "Esto se actualiza solo. SUNAT puede tardar entre 2 y 15 segundos."}
             </div>
+            {c.estado === "error" && c.sunat_mensaje && (
+              <div className="text-xs text-slate-500 mt-1 font-mono break-all">
+                {c.sunat_mensaje}
+              </div>
+            )}
           </div>
+          {c.estado === "error" && (
+            <button onClick={reintentar} className="btn-ghost text-xs shrink-0">
+              Reintentar ahora
+            </button>
+          )}
         </div>
       )}
 

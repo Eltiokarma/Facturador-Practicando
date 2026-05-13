@@ -26,6 +26,7 @@ import (
 	"github.com/eltiokarma/facturador/apps/api/internal/pdf"
 	"github.com/eltiokarma/facturador/apps/api/internal/queue"
 	"github.com/eltiokarma/facturador/apps/api/internal/resumenes"
+	"github.com/eltiokarma/facturador/apps/api/internal/sunatstatus"
 	"github.com/eltiokarma/facturador/apps/api/internal/tenant"
 	"github.com/eltiokarma/facturador/apps/api/internal/users"
 )
@@ -136,7 +137,8 @@ func main() {
 		Comprobantes: compStore, Queue: queueClient, Logger: logger,
 	}
 	compHandler := &httpapi.ComprobantesHandler{
-		Store: compStore, PDFBuilder: pdfBuilder, Tenants: tenantManager, Logger: logger,
+		Store: compStore, PDFBuilder: pdfBuilder, Tenants: tenantManager,
+		Queue: queueClient, Logger: logger,
 	}
 	clientesHandler := &httpapi.ClientesHandler{Store: clientesStore, Logger: logger}
 	productosHandler := &httpapi.ProductosHandler{Store: productosStore, Logger: logger}
@@ -145,11 +147,21 @@ func main() {
 		Tenants: tenantManager, Certs: certManager, Logger: logger,
 	}
 
+	// Status de SUNAT: goroutine que pinga cada 2 minutos los endpoints de
+	// beta y producción. Sirve para mostrar un banner al cajero cuando la
+	// emisión real está caída.
+	sunatChecker := sunatstatus.New(2*time.Minute, logger)
+	statusCtx, statusCancel := context.WithCancel(context.Background())
+	go sunatChecker.Run(statusCtx)
+	defer statusCancel()
+	sunatStatusHandler := &httpapi.SunatStatusHandler{Checker: sunatChecker}
+
 	router := httpapi.NewRouter(httpapi.Deps{
 		Cfg: cfg, Logger: logger, Signer: signer,
 		Auth: authHandler, Facturas: facturasHandler, Comprobantes: compHandler,
 		Clientes: clientesHandler, Productos: productosHandler,
 		Resumenes: resumenesHandler, Tenant: tenantHandler,
+		SunatStatus: sunatStatusHandler,
 		MotorPing: func() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()

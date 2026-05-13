@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { SunatStatusBanner } from "../components/SunatStatusBanner";
 import { TenantSwitcher } from "../components/TenantSwitcher";
 
 function DemoBanner() {
@@ -88,6 +89,7 @@ export function Layout() {
       </aside>
 
       <main className="flex-1 min-w-0 overflow-x-hidden">
+        <SunatStatusBanner />
         <DemoBanner />
         <div className="max-w-5xl mx-auto px-8 py-10">
           <Outlet />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "../api/client";
 import { ComprobanteRow } from "../types";
@@ -14,7 +14,13 @@ const FILTROS: { value: string; label: string }[] = [
 ];
 
 export function Comprobantes() {
-  const [filtro, setFiltro] = useState("");
+  const [params, setParams] = useSearchParams();
+  const filtro = params.get("estado") || "";
+  function setFiltro(v: string) {
+    if (v) params.set("estado", v);
+    else params.delete("estado");
+    setParams(params, { replace: true });
+  }
   const [items, setItems] = useState<ComprobanteRow[] | null>(null);
   const [loading, setLoading] = useState(true);
 

@@ -25,6 +25,7 @@ type Deps struct {
 	Productos    *ProductosHandler
 	Resumenes    *ResumenesHandler
 	Tenant       *TenantHandler
+	SunatStatus  *SunatStatusHandler
 	MotorPing    func() error
 }
 
@@ -54,6 +55,11 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/auth/login", d.Auth.Login)
 			r.Post("/auth/refresh", d.Auth.Refresh)
 		}
+		// El estado de SUNAT es público a propósito: el banner del frontend
+		// se muestra incluso fuera de sesión.
+		if d.SunatStatus != nil {
+			r.Get("/sunat/status", d.SunatStatus.Get)
+		}
 
 		// Rutas autenticadas
 		r.Group(func(r chi.Router) {
@@ -78,6 +84,7 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/comprobantes/{id}/xml", d.Comprobantes.XML)
 				r.Get("/comprobantes/{id}/cdr", d.Comprobantes.CDR)
 				r.Get("/comprobantes/{id}/pdf", d.Comprobantes.PDF)
+				r.Post("/comprobantes/{id}/reintentar", d.Comprobantes.Reintentar)
 			}
 			if d.Clientes != nil {
 				r.Get("/clientes", d.Clientes.List)
