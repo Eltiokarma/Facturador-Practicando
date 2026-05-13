@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { api, apiBlob } from "../api/client";
 import { ComprobanteDetalleT } from "../types";
+import { Modal } from "./Clientes";
 import { EstadoBadge, labelTipo } from "./Dashboard";
 
 const ESTADOS_EN_PROCESO = new Set(["pendiente", "enviando", "error"]);
@@ -13,6 +14,7 @@ export function ComprobanteDetalle() {
   const [c, setC] = useState<ComprobanteDetalleT | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPayload, setShowPayload] = useState(false);
+  const [showAnular, setShowAnular] = useState(false);
   const lastEstado = useRef<string | null>(null);
 
   useEffect(() => {
@@ -253,27 +255,46 @@ export function ComprobanteDetalle() {
           </div>
 
           {(c.tipo === "01" || c.tipo === "03") &&
-            (c.estado === "aceptado" || c.estado === "aceptado_con_obs") && (
+            (c.estado === "aceptado" || c.estado === "aceptado_con_obs") &&
+            !c.anulado && (
               <div className="mt-6 pt-6 border-t border-slate-200 space-y-2">
                 <p className="text-xs uppercase tracking-wide text-slate-500 font-medium">
-                  Emitir nota sobre este comprobante
+                  Acciones sobre este comprobante
                 </p>
-                <Link
-                  to={`/notas/credito?ref=${c.id}`}
-                  className="btn-ghost w-full"
-                >
+                <Link to={`/notas/credito?ref=${c.id}`} className="btn-ghost w-full">
                   Nota de crédito
                 </Link>
-                <Link
-                  to={`/notas/debito?ref=${c.id}`}
-                  className="btn-ghost w-full"
-                >
+                <Link to={`/notas/debito?ref=${c.id}`} className="btn-ghost w-full">
                   Nota de débito
                 </Link>
+                <button onClick={() => setShowAnular(true)} className="btn-ghost w-full text-rose-600">
+                  Anular (comunicación de baja)
+                </button>
               </div>
             )}
+
+          {c.anulado && (
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">
+                Este comprobante fue anulado ante SUNAT.
+              </div>
+            </div>
+          )}
         </div>
       </section>
+
+      {showAnular && (
+        <AnularModal
+          comprobanteID={c.id}
+          tipo={c.tipo}
+          serieCorrelativo={`${c.serie}-${c.correlativo}`}
+          onClose={() => setShowAnular(false)}
+          onDone={(anulacionID) => {
+            setShowAnular(false);
+            nav(`/anulaciones/${anulacionID}`);
+          }}
+        />
+      )}
 
       <section className="card p-6">
         <button
@@ -298,5 +319,78 @@ function Row({ label, value }: { label: string; value: string }) {
       <dt className="text-slate-500">{label}</dt>
       <dd className="text-slate-900 tabular-nums">{value}</dd>
     </div>
+  );
+}
+
+function AnularModal({
+  comprobanteID, tipo, serieCorrelativo, onClose, onDone,
+}: {
+  comprobanteID: string;
+  tipo: string;
+  serieCorrelativo: string;
+  onClose: () => void;
+  onDone: (anulacionID: string) => void;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (motivo.trim().length < 4) {
+      toast.error("El motivo debe tener al menos 4 caracteres");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const r = await api<{ id: string }>(
+        `/api/v1/comprobantes/${comprobanteID}/anular`,
+        { body: { motivo } }
+      );
+      toast.success("Anulación encolada, esperando respuesta de SUNAT…");
+      onDone(r.id);
+    } catch (e: any) {
+      toast.error(e?.body?.detalle || "No se pudo anular");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const tipoLabel = tipo === "01" ? "factura" : tipo === "03" ? "boleta" : "comprobante";
+
+  return (
+    <Modal title={`Anular ${tipoLabel} ${serieCorrelativo}`} onClose={onClose}>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">
+          <strong>Atención:</strong> la comunicación de baja anula este comprobante
+          ante SUNAT. Solo se puede hacer dentro de los 7 días siguientes a la
+          emisión. Pasado ese plazo hay que emitir una nota de crédito en lugar
+          de anular.
+        </div>
+        <div>
+          <label className="label">Motivo de la anulación</label>
+          <textarea
+            className="input"
+            rows={3}
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Ej: error en datos del cliente, operación no realizada, etc."
+            required
+            minLength={4}
+            maxLength={120}
+          />
+          <p className="text-xs text-slate-400 mt-1">
+            {motivo.length}/120 caracteres
+          </p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn-danger" disabled={submitting}>
+            {submitting ? "Enviando…" : "Confirmar anulación"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -77,9 +77,11 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 - [x] Notas de crédito y notas de débito, con motivo SUNAT (catálogos 09/10), referencia al comprobante original, ítems prellenados.
 - [x] Modo DEMO por tenant: emisiones simuladas localmente sin tocar SUNAT, banner permanente en la UI, watermark "DEMO" en los PDFs. Permite explorar el sistema sin tener cert ni credenciales reales.
 - [x] Detección de caídas de SUNAT: ping periódico a los endpoints, banner global en la UI cuando está down, botón "Reintentar ahora" en comprobantes en estado error.
-- [x] Guía de Remisión Electrónica (GRE — tipo 09): modelo completo con destinatario, puntos de partida/llegada, transportista, peso, ítems. Validaciones SUNAT (ubigeo, placa, modalidad pública/privada). En DEMO simulado; en producción requiere credenciales API GRE de SUNAT (OAuth2).
+- [x] Guía de Remisión Electrónica (GRE — tipo 09): modelo completo con destinatario, puntos de partida/llegada, transportista, peso, ítems. Validaciones SUNAT (ubigeo, placa, modalidad pública/privada). OAuth2 real contra api-cpe.sunat.gob.pe vía Greenter\Api; flow ticket → consulta async.
+- [x] Comunicación de baja (anulación): anular factura/boleta/nota aceptada por SUNAT dentro de los 7 días. Flow ticket. Marca el comprobante como anulado cuando SUNAT acepta.
 - [x] Importación masiva desde CSV: clientes y productos. Validación fila por fila, plantilla descargable, resumen de errores.
 - [ ] Invitar usuarios a tu tenant (compartir acceso con contador / cajero).
+- [ ] App móvil (PWA standalone con cola local) para emisión rápida.
 - [ ] PWA offline-first con cola local en IndexedDB.
 - [ ] GRE (obligatoria desde julio 2026).
 - [ ] Notificaciones por email al cliente con el PDF y XML adjuntos.
@@ -117,6 +119,10 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 | POST | `/api/v1/guias` | JWT | emitir guía de remisión (tipo 09) |
 | POST | `/api/v1/clientes/importar` (multipart) | JWT | importar clientes desde CSV |
 | POST | `/api/v1/productos/importar` (multipart) | JWT | importar productos desde CSV |
+| POST | `/api/v1/comprobantes/{id}/anular` | JWT | anular un CPE aceptado (≤7 días) |
+| GET  | `/api/v1/anulaciones` | JWT | historial de anulaciones |
+| GET  | `/api/v1/anulaciones/{id}` | JWT | detalle de una anulación |
+| PUT  | `/api/v1/tenant/gre-credenciales` | JWT dueño | guardar credenciales API GRE (OAuth2) |
 
 ## Arquitectura de emisión
 

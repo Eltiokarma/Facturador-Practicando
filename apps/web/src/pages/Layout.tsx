@@ -30,6 +30,7 @@ const items = [
   { to: "/comprobantes", label: "Comprobantes", icon: "🗂️" },
   { to: "/resumenes", label: "Resumen diario", icon: "📅" },
   { to: "/guias/nueva", label: "Guía de remisión", icon: "🚚" },
+  { to: "/anulaciones", label: "Anulaciones", icon: "🗑️" },
   { to: "/clientes", label: "Clientes", icon: "👥" },
   { to: "/productos", label: "Productos", icon: "📦" },
   { to: "/configuracion", label: "Configuración", icon: "⚙️" },

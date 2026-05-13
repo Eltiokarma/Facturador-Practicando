@@ -27,6 +27,7 @@ type Deps struct {
 	Tenant       *TenantHandler
 	SunatStatus  *SunatStatusHandler
 	Guias        *GuiasHandler
+	Anulaciones  *AnulacionesHandler
 	MotorPing    func() error
 }
 
@@ -90,6 +91,11 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/comprobantes/{id}/pdf", d.Comprobantes.PDF)
 				r.Post("/comprobantes/{id}/reintentar", d.Comprobantes.Reintentar)
 			}
+			if d.Anulaciones != nil {
+				r.Post("/comprobantes/{id}/anular", d.Anulaciones.AnularComprobante)
+				r.Get("/anulaciones", d.Anulaciones.List)
+				r.Get("/anulaciones/{id}", d.Anulaciones.Get)
+			}
 			if d.Clientes != nil {
 				r.Get("/clientes", d.Clientes.List)
 				r.Post("/clientes", d.Clientes.Upsert)
@@ -114,6 +120,7 @@ func NewRouter(d Deps) http.Handler {
 				r.Get("/tenant", d.Tenant.Get)
 				r.Put("/tenant", d.Tenant.UpdatePerfil)
 				r.Put("/tenant/credenciales", d.Tenant.UpdateCredenciales)
+				r.Put("/tenant/gre-credenciales", d.Tenant.UpdateGRECredenciales)
 				r.Post("/tenant/cert", d.Tenant.UploadCert)
 			}
 		})

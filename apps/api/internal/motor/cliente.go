@@ -104,6 +104,69 @@ func (c *Cliente) Guia(ctx context.Context, req GuiaRequest) (*GuiaResponse, err
 	return &out, nil
 }
 
+type ConsultaTicketGuiaRequest struct {
+	Modo   string         `json:"modo"`
+	Tenant map[string]any `json:"tenant"`
+	Ticket string         `json:"ticket"`
+}
+
+type ConsultaTicketGuiaResponse struct {
+	// "procesando" | "aceptado" | "aceptado_con_obs" | "rechazado" | "error"
+	Estado  string `json:"estado"`
+	CDRZip  string `json:"cdr_zip,omitempty"`
+	HashCPE string `json:"hash_cpe,omitempty"`
+	Codigo  string `json:"codigo,omitempty"`
+	Mensaje string `json:"mensaje,omitempty"`
+}
+
+func (c *Cliente) ConsultaTicketGuia(ctx context.Context, req ConsultaTicketGuiaRequest) (*ConsultaTicketGuiaResponse, error) {
+	body, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/consulta-ticket-guia", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("motor.ConsultaTicketGuia: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var out ConsultaTicketGuiaResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("motor.ConsultaTicketGuia: %w (body=%q)", err, raw)
+	}
+	return &out, nil
+}
+
+type AnularRequest struct {
+	Modo      string         `json:"modo"`
+	Tenant    map[string]any `json:"tenant"`
+	Anulacion map[string]any `json:"anulacion"`
+}
+
+type AnularResponse struct {
+	Estado     string `json:"estado"` // "ticket" | "error" | "rechazado"
+	Ticket     string `json:"ticket,omitempty"`
+	XMLFirmado string `json:"xml_firmado,omitempty"`
+	Codigo     string `json:"codigo,omitempty"`
+	Mensaje    string `json:"mensaje,omitempty"`
+}
+
+func (c *Cliente) Anular(ctx context.Context, req AnularRequest) (*AnularResponse, error) {
+	body, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/anular", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("motor.Anular: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var out AnularResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("motor.Anular: %w (body=%q)", err, raw)
+	}
+	return &out, nil
+}
+
 type ResumenRequest struct {
 	Modo    string         `json:"modo"`
 	Tenant  map[string]any `json:"tenant"`

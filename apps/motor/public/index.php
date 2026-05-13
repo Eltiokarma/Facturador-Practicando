@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+use Facturador\Motor\Anulacion;
 use Facturador\Motor\Emisor;
 use Facturador\Motor\Guia;
 use Facturador\Motor\Nota;
@@ -76,6 +77,44 @@ $app->post('/emitir-guia', function (Request $request, Response $response): Resp
     }
     try {
         $r = (new Guia())->emitir($payload);
+    } catch (\Throwable $e) {
+        $r = ['estado' => 'error', 'codigo' => 'MOTOR_EXCEPTION', 'mensaje' => $e->getMessage()];
+    }
+    $status = ($r['estado'] ?? 'error') === 'error' ? 500 : 200;
+    $response->getBody()->write((string)json_encode($r, JSON_UNESCAPED_UNICODE));
+    return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+});
+
+$app->post('/anular', function (Request $request, Response $response): Response {
+    $payload = $request->getParsedBody();
+    if (!is_array($payload)) {
+        $response->getBody()->write(json_encode([
+            'estado' => 'error', 'codigo' => 'BAD_PAYLOAD', 'mensaje' => 'JSON inválido',
+        ]));
+        return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+    }
+    try {
+        $r = (new Anulacion())->enviar($payload);
+    } catch (\Throwable $e) {
+        $r = ['estado' => 'error', 'codigo' => 'MOTOR_EXCEPTION', 'mensaje' => $e->getMessage()];
+    }
+    $status = ($r['estado'] ?? 'error') === 'error' ? 500 : 200;
+    $response->getBody()->write((string)json_encode($r, JSON_UNESCAPED_UNICODE));
+    return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+});
+
+$app->post('/consulta-ticket-guia', function (Request $request, Response $response): Response {
+    $payload = $request->getParsedBody();
+    if (!is_array($payload)) {
+        $response->getBody()->write(json_encode([
+            'estado' => 'error',
+            'codigo' => 'BAD_PAYLOAD',
+            'mensaje' => 'JSON inválido',
+        ]));
+        return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+    }
+    try {
+        $r = (new Guia())->consultarTicket($payload);
     } catch (\Throwable $e) {
         $r = ['estado' => 'error', 'codigo' => 'MOTOR_EXCEPTION', 'mensaje' => $e->getMessage()];
     }

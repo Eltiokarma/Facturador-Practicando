@@ -21,17 +21,19 @@ type TenantHandler struct {
 }
 
 type tenantDTO struct {
-	ID              uuid.UUID `json:"id"`
-	RUC             string    `json:"ruc"`
-	RazonSocial     string    `json:"razon_social"`
-	NombreComercial string    `json:"nombre_comercial,omitempty"`
-	DireccionFiscal string    `json:"direccion_fiscal,omitempty"`
-	Ubigeo          string    `json:"ubigeo,omitempty"`
-	SunatMode       string    `json:"sunat_mode"`
-	UsuarioSOL      string    `json:"usuario_sol,omitempty"`
-	CertPath        string    `json:"cert_path,omitempty"`
-	HasCert         bool      `json:"has_cert"`
-	DemoMode        bool      `json:"demo_mode"`
+	ID                  uuid.UUID `json:"id"`
+	RUC                 string    `json:"ruc"`
+	RazonSocial         string    `json:"razon_social"`
+	NombreComercial     string    `json:"nombre_comercial,omitempty"`
+	DireccionFiscal     string    `json:"direccion_fiscal,omitempty"`
+	Ubigeo              string    `json:"ubigeo,omitempty"`
+	SunatMode           string    `json:"sunat_mode"`
+	UsuarioSOL          string    `json:"usuario_sol,omitempty"`
+	GREClientID         string    `json:"gre_client_id,omitempty"`
+	HasGRECredenciales  bool      `json:"has_gre_credenciales"`
+	CertPath            string    `json:"cert_path,omitempty"`
+	HasCert             bool      `json:"has_cert"`
+	DemoMode            bool      `json:"demo_mode"`
 }
 
 func (h *TenantHandler) toDTO(r *tenant.Record) tenantDTO {
@@ -40,7 +42,10 @@ func (h *TenantHandler) toDTO(r *tenant.Record) tenantDTO {
 		NombreComercial: r.NombreComercial, DireccionFiscal: r.DireccionFiscal,
 		Ubigeo: r.Ubigeo, SunatMode: r.SunatMode,
 		UsuarioSOL: r.UsuarioSOL, CertPath: r.CertPath,
-		HasCert: h.Certs.HasCert(r.ID), DemoMode: r.DemoMode,
+		HasCert:            h.Certs.HasCert(r.ID),
+		DemoMode:           r.DemoMode,
+		GREClientID:        r.GREClientID,
+		HasGRECredenciales: r.GREClientID != "" && r.GREClientSecret != "",
 	}
 }
 
@@ -114,6 +119,43 @@ func (h *TenantHandler) UpdatePerfil(w http.ResponseWriter, r *http.Request) {
 type updateCredsReq struct {
 	UsuarioSOL string `json:"usuario_sol"`
 	ClaveSOL   string `json:"clave_sol"`
+}
+
+type updateGRECredsReq struct {
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+}
+
+// UpdateGRECredenciales: el dueño guarda las credenciales OAuth2 que SUNAT
+// entrega para emitir GRE vía REST. Se cifran con MASTER_KEY.
+func (h *TenantHandler) UpdateGRECredenciales(w http.ResponseWriter, r *http.Request) {
+	tid, ok := auth.TenantIDFrom(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	claims, _ := auth.FromContext(r.Context())
+	if claims == nil || claims.Rol != "dueno" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "solo_dueno"})
+		return
+	}
+	var req updateGRECredsReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "json_invalido"})
+		return
+	}
+	if req.ClientID == "" || req.ClientSecret == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "client_id_y_secret_requeridos"})
+		return
+	}
+	if err := h.Tenants.Store().UpdateGRECredenciales(r.Context(), tid, req.ClientID, req.ClientSecret); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal"})
+		return
+	}
+	if _, err := h.Tenants.Refresh(r.Context(), tid); err != nil {
+		h.Logger.Warn("refresh tenant", "err", err)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "actualizado"})
 }
 
 func (h *TenantHandler) UpdateCredenciales(w http.ResponseWriter, r *http.Request) {

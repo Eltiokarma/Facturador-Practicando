@@ -15,6 +15,8 @@ type TenantConfig = {
   cert_path?: string;
   has_cert?: boolean;
   demo_mode: boolean;
+  gre_client_id?: string;
+  has_gre_credenciales?: boolean;
 };
 
 export function Configuracion() {
@@ -250,7 +252,87 @@ export function Configuracion() {
       </section>
 
       <CertSection tenant={t} esDueno={esDueno} onUploaded={() => window.location.reload()} />
+
+      <GRESection tenant={t} esDueno={esDueno} />
     </div>
+  );
+}
+
+function GRESection({ tenant: t, esDueno }: { tenant: TenantConfig; esDueno: boolean }) {
+  const [clientId, setClientId] = useState(t.gre_client_id || "");
+  const [clientSecret, setClientSecret] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!clientId || !clientSecret) {
+      toast.error("Client ID y Client Secret son obligatorios");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api("/api/v1/tenant/gre-credenciales", {
+        method: "PUT",
+        body: { client_id: clientId, client_secret: clientSecret },
+      });
+      toast.success("Credenciales API GRE guardadas (cifradas).");
+      setClientSecret("");
+    } catch (e: any) {
+      toast.error(e?.body?.detalle || "No se pudo guardar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="card p-6">
+      <h2 className="text-lg font-medium text-slate-900 mb-1">
+        Credenciales API GRE (OAuth2)
+      </h2>
+      <p className="text-xs text-slate-500 mb-4">
+        Solo necesarias si vas a emitir Guías de Remisión Electrónica (tipo 09).
+        SUNAT exige Client ID + Client Secret distintos de Clave SOL. Los
+        obtenés desde Clave SOL → Empresas → API SUNAT. Se guardan cifrados
+        con AES-256-GCM.
+      </p>
+      <div className={`mb-4 rounded-lg p-3 text-sm border ${
+        t.has_gre_credenciales
+          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+          : "bg-slate-50 border-slate-200 text-slate-700"
+      }`}>
+        {t.has_gre_credenciales
+          ? "✓ Credenciales API GRE configuradas. Podés emitir guías."
+          : "ℹ Sin credenciales API GRE configuradas. Solo necesarias si vas a usar GRE en modo real."}
+      </div>
+      {esDueno && (
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div>
+            <label className="label">Client ID</label>
+            <input
+              className="input"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="UUID que te dio SUNAT"
+            />
+          </div>
+          <div>
+            <label className="label">Client Secret</label>
+            <input
+              type="password"
+              className="input"
+              value={clientSecret}
+              onChange={(e) => setClientSecret(e.target.value)}
+              placeholder={t.has_gre_credenciales ? "(dejar vacío para no cambiar el actual)" : ""}
+            />
+          </div>
+          <div className="flex justify-end">
+            <button type="submit" className="btn-primary" disabled={saving}>
+              {saving ? "Guardando…" : "Guardar credenciales GRE"}
+            </button>
+          </div>
+        </form>
+      )}
+    </section>
   );
 }
 

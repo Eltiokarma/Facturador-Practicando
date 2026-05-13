@@ -4,74 +4,205 @@ declare(strict_types=1);
 namespace Facturador\Motor;
 
 use DateTime;
+use Greenter\Api;
 use Greenter\Model\Client\Client;
 use Greenter\Model\Company\Address;
 use Greenter\Model\Company\Company;
 use Greenter\Model\Despatch\Despatch;
 use Greenter\Model\Despatch\DespatchDetail;
 use Greenter\Model\Despatch\Direction;
+use Greenter\Model\Despatch\Driver;
 use Greenter\Model\Despatch\Shipment;
 use Greenter\Model\Despatch\Transportist;
 use Greenter\Model\Despatch\Vehicle;
 
 /**
- * Emisor de Guía de Remisión Electrónica (GRE).
+ * Emisor de Guía de Remisión Electrónica (GRE), tipo 09.
  *
- * SUNAT cambió en 2022 el flow de GRE: ahora va por REST + OAuth2 contra
- * api-cpe.sunat.gob.pe, NO por SOAP. Greenter v5 soporta esto con
- * Greenter\Api, pero requiere obtener antes un token de acceso.
+ * SUNAT, desde 2022, exige enviar GRE vía REST + OAuth2 contra
+ *   https://api-cpe.sunat.gob.pe/v1  (producción)
+ *   https://api-cpe.sunat.gob.pe/v1  (beta — sí, es el mismo host)
  *
- * En el MVP esta clase:
- *   - Construye el modelo Despatch de Greenter desde nuestro payload.
- *   - Genera el XML firmado (eso sí funciona offline con el .p12).
- *   - Si hay credenciales API GRE, envía a SUNAT y consulta el ticket.
- *   - Si no, devuelve un error claro indicando que se deben configurar.
+ * El XML se sigue firmando con el .p12 del contribuyente (XAdES-BES).
+ * Lo que cambia respecto a facturas es:
+ *   - Autenticación: OAuth2 client_credentials (no Clave SOL).
+ *   - Transporte: HTTP POST JSON (no SOAP).
+ *   - Resultado: ticket → consultar.
  *
- * En modo DEMO el worker ya simula la respuesta y nunca llega acá.
+ * Esta clase implementa el flow completo usando Greenter\Api.
  */
 final class Guia
 {
+    /** Endpoints de SUNAT por modo. */
+    private const ENDPOINTS = [
+        'prod' => [
+            'auth' => 'https://api-seguridad.sunat.gob.pe/v1',
+            'cpe'  => 'https://api-cpe.sunat.gob.pe/v1',
+        ],
+        'beta' => [
+            'auth' => 'https://api-seguridad.sunat.gob.pe/v1',
+            'cpe'  => 'https://api-cpe.sunat.gob.pe/v1',
+            // SUNAT comparte el host para beta y prod; se diferencian por
+            // las credenciales que el contribuyente registra en cada
+            // ambiente desde Clave SOL.
+        ],
+    ];
+
     /**
+     * Envía la guía a SUNAT y devuelve el ticket.
+     *
      * @param array<string,mixed> $payload
      * @return array<string,mixed>
      */
     public function emitir(array $payload): array
     {
-        $tenant = $payload['tenant'] ?? [];
-        $g      = $payload['guia'] ?? [];
+        $modo   = (string)($payload['modo'] ?? 'beta');
+        $tenant = (array)($payload['tenant'] ?? []);
+        $g      = (array)($payload['guia'] ?? []);
 
-        $clientID = (string)($tenant['gre_client_id'] ?? '');
-        $clientSecret = (string)($tenant['gre_client_secret'] ?? '');
+        [$ok, $err] = $this->validarCreds($tenant);
+        if (!$ok) return $err;
 
-        if ($clientID === '' || $clientSecret === '') {
+        try {
+            $api = $this->buildApi($modo, $tenant);
+            $despatch = $this->buildDespatch($tenant, $g);
+            $result = $api->send($despatch);
+        } catch (\Throwable $e) {
+            return ['estado' => 'error', 'codigo' => 'MOTOR_EXCEPTION', 'mensaje' => $e->getMessage()];
+        }
+
+        $xmlFirmado = $api->getLastXml();
+        $hash = $this->extraerHash($xmlFirmado ?? '');
+
+        if ($result === null || !$result->isSuccess()) {
+            $errObj = $result?->getError();
             return [
-                'estado' => 'error',
-                'codigo' => 'GRE_SIN_CREDENCIALES',
-                'mensaje' => 'Para emitir GRE en producción/beta configurá las credenciales API GRE (Client ID y Client Secret) en Configuración. La GRE usa OAuth2 contra api-cpe.sunat.gob.pe, no Clave SOL.',
+                'estado' => 'rechazado',
+                'xml_firmado' => $xmlFirmado ? base64_encode($xmlFirmado) : null,
+                'hash_cpe' => $hash,
+                'codigo' => $errObj?->getCode() ?? 'UNKNOWN',
+                'mensaje' => $errObj?->getMessage() ?? 'SUNAT rechazó la GRE',
             ];
         }
 
-        try {
-            $despatch = $this->buildDespatch($tenant, $g);
-        } catch (\Throwable $e) {
-            return ['estado' => 'error', 'codigo' => 'BUILD_FAIL', 'mensaje' => $e->getMessage()];
+        // En Greenter\Api, send() devuelve BillResult con ticket.
+        $ticket = '';
+        if (method_exists($result, 'getTicket')) {
+            $ticket = (string)$result->getTicket();
+        }
+        if ($ticket === '') {
+            return [
+                'estado' => 'error',
+                'codigo' => 'SIN_TICKET',
+                'mensaje' => 'SUNAT no devolvió ticket para la GRE',
+            ];
         }
 
-        // TODO en v2: enviar a SUNAT vía Greenter\Api. Esto requiere:
-        //   $api = new \Greenter\Api(['feed' => 'https://api-cpe.sunat.gob.pe/v1/contribuyente/gem']);
-        //   $api->setBuilderOptions(...)->setApiCredentials($clientID, $clientSecret)
-        //       ->setClaveSOL($ruc, $usuario, $clave);
-        //   $result = $api->send($despatch);
-        //   $ticket = $result->getTicket();
-        //   $status = $api->getStatus($ticket);
-        //
-        // Mientras tanto, devolvemos error explícito para que el operador
-        // sepa que la pieza falta. Igual generamos el XML para mostrarlo.
         return [
-            'estado' => 'error',
-            'codigo' => 'GRE_NO_IMPLEMENTADO',
-            'mensaje' => 'El envío real de GRE a SUNAT requiere wiring adicional con Greenter\\Api + OAuth2. Por ahora usá modo DEMO o esperá la próxima versión. La estructura UBL ya se construye correctamente.',
+            'estado' => 'ticket',
+            'ticket' => $ticket,
+            'xml_firmado' => $xmlFirmado ? base64_encode($xmlFirmado) : null,
+            'hash_cpe' => $hash,
         ];
+    }
+
+    /**
+     * Consulta el resultado de un ticket de GRE.
+     *
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    public function consultarTicket(array $payload): array
+    {
+        $modo   = (string)($payload['modo'] ?? 'beta');
+        $tenant = (array)($payload['tenant'] ?? []);
+        $ticket = (string)($payload['ticket'] ?? '');
+
+        [$ok, $err] = $this->validarCreds($tenant);
+        if (!$ok) return $err;
+        if ($ticket === '') {
+            return ['estado' => 'error', 'codigo' => 'BAD_INPUT', 'mensaje' => 'ticket vacío'];
+        }
+
+        try {
+            $api = $this->buildApi($modo, $tenant);
+            $status = $api->getStatus($ticket);
+        } catch (\Throwable $e) {
+            return ['estado' => 'error', 'codigo' => 'MOTOR_EXCEPTION', 'mensaje' => $e->getMessage()];
+        }
+
+        if (!$status->isSuccess()) {
+            $errObj = $status->getError();
+            $code = $errObj?->getCode() ?? '';
+            // 98 = procesando (SUNAT todavía no terminó).
+            if (in_array($code, ['98', '0098'], true)) {
+                return ['estado' => 'procesando'];
+            }
+            return [
+                'estado' => 'rechazado',
+                'codigo' => $code,
+                'mensaje' => $errObj?->getMessage() ?? 'SUNAT rechazó',
+            ];
+        }
+
+        $cdr = $status->getCdrResponse();
+        $code = $cdr?->getCode() ?? '';
+        $obs = $cdr?->getNotes() ?? [];
+        $estado = ($code === '0' && empty($obs)) ? 'aceptado' : 'aceptado_con_obs';
+
+        return [
+            'estado'  => $estado,
+            'cdr_zip' => base64_encode($status->getCdrZip() ?? ''),
+            'codigo'  => $code,
+            'mensaje' => $cdr?->getDescription() ?? '',
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $tenant
+     * @return array{0:bool,1:array<string,mixed>}
+     */
+    private function validarCreds(array $tenant): array
+    {
+        $cert = trim((string)($tenant['cert_pem'] ?? ''));
+        $key  = trim((string)($tenant['cert_key_pem'] ?? ''));
+        $clientID = (string)($tenant['gre_client_id'] ?? '');
+        $secret = (string)($tenant['gre_client_secret'] ?? '');
+        if ($cert === '' || $key === '') {
+            return [false, ['estado' => 'error', 'codigo' => 'NO_CERT',
+                'mensaje' => 'GRE requiere certificado .p12 — subilo desde Configuración']];
+        }
+        if ($clientID === '' || $secret === '') {
+            return [false, ['estado' => 'error', 'codigo' => 'NO_API_CREDS',
+                'mensaje' => 'GRE requiere Client ID + Client Secret API SUNAT. Obtenelos en Clave SOL → Cliente API.']];
+        }
+        return [true, []];
+    }
+
+    /**
+     * @param array<string,mixed> $tenant
+     */
+    private function buildApi(string $modo, array $tenant): Api
+    {
+        $endpoints = self::ENDPOINTS[$modo] ?? self::ENDPOINTS['beta'];
+        $api = new Api($endpoints);
+        $api->setBuilderOptions(['strict_variables' => true]);
+        $api->setApiCredentials(
+            (string)$tenant['gre_client_id'],
+            (string)$tenant['gre_client_secret']
+        );
+        // Algunas versiones de Greenter\Api también requieren Clave SOL
+        // para el flow de GRE (depende del ambiente). Pasamos lo que tenga.
+        if (!empty($tenant['usuario_sol']) && !empty($tenant['clave_sol'])) {
+            $api->setClaveSOL(
+                (string)$tenant['ruc'],
+                (string)$tenant['usuario_sol'],
+                (string)$tenant['clave_sol']
+            );
+        }
+        $cert = trim((string)$tenant['cert_pem']) . "\n" . trim((string)$tenant['cert_key_pem']) . "\n";
+        $api->setCertificate($cert);
+        return $api;
     }
 
     /**
@@ -135,8 +266,16 @@ final class Guia
             $envio->setVehiculo(
                 (new Vehicle())->setPlaca((string)$t['placa_vehiculo'])
             );
-            // El chofer se setea como array de Driver objects; Greenter
-            // versión actual usa setChoferes. Lo dejamos minimal por ahora.
+            if (!empty($t['doc_chofer']) && !empty($t['nombre_chofer'])) {
+                $chofer = (new Driver())
+                    ->setTipoDoc('1')
+                    ->setNroDoc((string)$t['doc_chofer'])
+                    ->setNombres((string)$t['nombre_chofer'])
+                    ->setApellidos('')
+                    ->setLicencia((string)($t['licencia_chofer'] ?? ''))
+                    ->setTipo('Principal');
+                $envio->setChoferes([$chofer]);
+            }
         }
 
         $despatch = (new Despatch())
@@ -163,5 +302,14 @@ final class Guia
         }
         $despatch->setDetails($details);
         return $despatch;
+    }
+
+    private function extraerHash(string $xml): string
+    {
+        if ($xml === '') return '';
+        $doc = new \DOMDocument();
+        if (!@$doc->loadXML($xml)) return '';
+        $nodes = $doc->getElementsByTagNameNS('http://www.w3.org/2000/09/xmldsig#', 'DigestValue');
+        return $nodes->length > 0 ? trim($nodes->item(0)->nodeValue ?? '') : '';
     }
 }

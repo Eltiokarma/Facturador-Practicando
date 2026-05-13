@@ -13,7 +13,9 @@ export type ComprobanteRow = {
   estado: string;
   sunat_codigo?: string;
   sunat_mensaje?: string;
+  sunat_ticket?: string;
   hash_cpe?: string;
+  anulado: boolean;
   created_at: string;
 };
 

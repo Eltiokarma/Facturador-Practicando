@@ -11,6 +11,7 @@ import { Productos } from "./pages/Productos";
 import { Resumenes } from "./pages/Resumenes";
 import { ResumenDetalle } from "./pages/ResumenDetalle";
 import { Configuracion } from "./pages/Configuracion";
+import { Anulaciones, AnulacionDetalle } from "./pages/Anulaciones";
 import { NuevaEmpresa } from "./pages/NuevaEmpresa";
 import { NuevaGuia } from "./pages/NuevaGuia";
 import { NuevaNota } from "./pages/NuevaNota";
@@ -40,6 +41,8 @@ export function App() {
         <Route path="empresas/nueva" element={<NuevaEmpresa />} />
         <Route path="notas/:tipo" element={<NuevaNota />} />
         <Route path="guias/nueva" element={<NuevaGuia />} />
+        <Route path="anulaciones" element={<Anulaciones />} />
+        <Route path="anulaciones/:id" element={<AnulacionDetalle />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

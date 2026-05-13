@@ -23,6 +23,7 @@ type EmitHandler struct {
 	Certs        *cert.Manager
 	Motor        *motor.Cliente
 	Comprobantes *comprobantes.Store
+	Client       *Client // para reencolar consulta de ticket GRE
 	Logger       *slog.Logger
 }
 
@@ -166,12 +167,17 @@ func NewServer(redisAddr string, concurrency int, logger *slog.Logger) *Server {
 	return &Server{srv: srv}
 }
 
-func (s *Server) Start(emit *EmitHandler, resumen *ResumenHandler) error {
+func (s *Server) Start(emit *EmitHandler, resumen *ResumenHandler, anul *AnulHandler) error {
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(TypeEmit, emit.Handle)
+	mux.HandleFunc(TypeGuiaStatus, emit.HandleGuiaStatus)
 	if resumen != nil {
 		mux.HandleFunc(TypeResumenEnviar, resumen.HandleEnviar)
 		mux.HandleFunc(TypeResumenStatus, resumen.HandleStatus)
+	}
+	if anul != nil {
+		mux.HandleFunc(TypeAnularEnviar, anul.HandleEnviar)
+		mux.HandleFunc(TypeAnularStatus, anul.HandleStatus)
 	}
 	return s.srv.Start(mux)
 }

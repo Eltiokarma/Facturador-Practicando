@@ -32,6 +32,9 @@ type Record struct {
 	CertPath        string    `json:"cert_path,omitempty"`
 	CertPassCipher  []byte    `json:"-"`
 	DemoMode        bool      `json:"demo_mode"`
+	// Credenciales API GRE (OAuth2). Solo en memoria.
+	GREClientID     string    `json:"-"`
+	GREClientSecret string    `json:"-"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
@@ -51,16 +54,19 @@ var (
 
 func (s *Store) ByID(ctx context.Context, id uuid.UUID) (*Record, error) {
 	var r Record
-	var usuario, clave, passp []byte
+	var usuario, clave, passp, greID, greSecret []byte
 	var ubigeo, certPath, nombre, direccion *string
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, ruc, razon_social, nombre_comercial, direccion_fiscal,
 		       ubigeo, sunat_mode,
 		       sunat_usuario_sol_cifrado, sunat_clave_sol_cifrada,
-		       cert_path, cert_pass_cifrado, demo_mode, updated_at
+		       cert_path, cert_pass_cifrado, demo_mode,
+		       gre_client_id_cifrado, gre_client_secret_cifrado,
+		       updated_at
 		FROM tenants WHERE id=$1
 	`, id).Scan(&r.ID, &r.RUC, &r.RazonSocial, &nombre, &direccion,
-		&ubigeo, &r.SunatMode, &usuario, &clave, &certPath, &passp, &r.DemoMode, &r.UpdatedAt)
+		&ubigeo, &r.SunatMode, &usuario, &clave, &certPath, &passp, &r.DemoMode,
+		&greID, &greSecret, &r.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -88,7 +94,35 @@ func (s *Store) ByID(ctx context.Context, id uuid.UUID) (*Record, error) {
 	if err != nil {
 		return nil, err
 	}
+	r.GREClientID, err = s.c.Decrypt(greID)
+	if err != nil {
+		return nil, err
+	}
+	r.GREClientSecret, err = s.c.Decrypt(greSecret)
+	if err != nil {
+		return nil, err
+	}
 	return &r, nil
+}
+
+// UpdateGRECredenciales cifra y guarda las credenciales OAuth2 de la API GRE.
+func (s *Store) UpdateGRECredenciales(ctx context.Context, id uuid.UUID, clientID, clientSecret string) error {
+	idBlob, err := s.c.Encrypt(clientID)
+	if err != nil {
+		return err
+	}
+	secretBlob, err := s.c.Encrypt(clientSecret)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE tenants SET
+			gre_client_id_cifrado     = $2,
+			gre_client_secret_cifrado = $3,
+			updated_at                = now()
+		WHERE id=$1
+	`, id, idBlob, secretBlob)
+	return err
 }
 
 func (s *Store) ByRUC(ctx context.Context, ruc string) (*Record, error) {

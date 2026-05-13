@@ -17,9 +17,12 @@ import (
 )
 
 const (
-	TypeEmit           = "comprobante:emit"
-	TypeResumenEnviar  = "resumen:enviar"
-	TypeResumenStatus  = "resumen:status"
+	TypeEmit             = "comprobante:emit"
+	TypeGuiaStatus       = "guia:status"
+	TypeResumenEnviar    = "resumen:enviar"
+	TypeResumenStatus    = "resumen:status"
+	TypeAnularEnviar     = "anular:enviar"
+	TypeAnularStatus     = "anular:status"
 )
 
 type EmitPayload struct {
@@ -30,6 +33,11 @@ type EmitPayload struct {
 type ResumenPayload struct {
 	TenantID  uuid.UUID `json:"tenant_id"`
 	ResumenID uuid.UUID `json:"resumen_id"`
+}
+
+type AnularPayload struct {
+	TenantID    uuid.UUID `json:"tenant_id"`
+	AnulacionID uuid.UUID `json:"anulacion_id"`
 }
 
 type Client struct {
@@ -85,6 +93,47 @@ func (c *Client) EnqueueResumenStatus(ctx context.Context, p ResumenPayload, del
 		asynq.Timeout(1*time.Minute),
 		asynq.Retention(7*24*time.Hour),
 		asynq.ProcessIn(delay),
+	)
+	_, err = c.c.EnqueueContext(ctx, task)
+	return err
+}
+
+// EnqueueGuiaStatus consulta el ticket de una GRE async.
+func (c *Client) EnqueueGuiaStatus(ctx context.Context, p EmitPayload, delay time.Duration) error {
+	body, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	task := asynq.NewTask(TypeGuiaStatus, body,
+		asynq.MaxRetry(20),
+		asynq.Timeout(1*time.Minute),
+		asynq.Retention(7*24*time.Hour),
+		asynq.ProcessIn(delay),
+	)
+	_, err = c.c.EnqueueContext(ctx, task)
+	return err
+}
+
+func (c *Client) EnqueueAnularEnviar(ctx context.Context, p AnularPayload) error {
+	body, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	task := asynq.NewTask(TypeAnularEnviar, body,
+		asynq.MaxRetry(7), asynq.Timeout(2*time.Minute), asynq.Retention(7*24*time.Hour),
+	)
+	_, err = c.c.EnqueueContext(ctx, task)
+	return err
+}
+
+func (c *Client) EnqueueAnularStatus(ctx context.Context, p AnularPayload, delay time.Duration) error {
+	body, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	task := asynq.NewTask(TypeAnularStatus, body,
+		asynq.MaxRetry(20), asynq.Timeout(1*time.Minute),
+		asynq.Retention(7*24*time.Hour), asynq.ProcessIn(delay),
 	)
 	_, err = c.c.EnqueueContext(ctx, task)
 	return err

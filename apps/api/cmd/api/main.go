@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/eltiokarma/facturador/apps/api/internal/anulaciones"
 	"github.com/eltiokarma/facturador/apps/api/internal/auth"
 	"github.com/eltiokarma/facturador/apps/api/internal/catalogos"
 	"github.com/eltiokarma/facturador/apps/api/internal/cert"
@@ -107,6 +108,7 @@ func main() {
 	clientesStore := catalogos.NewClientesStore(pool)
 	productosStore := catalogos.NewProductosStore(pool)
 	resumenesStore := resumenes.NewStore(pool)
+	anulacionesStore := anulaciones.NewStore(pool)
 	pdfBuilder := pdf.New()
 
 	signer := auth.NewSigner(cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
@@ -117,14 +119,19 @@ func main() {
 
 	emitHandler := &queue.EmitHandler{
 		Cfg: cfg, Tenants: tenantManager, Certs: certManager, Motor: mot,
-		Comprobantes: compStore, Logger: logger,
+		Comprobantes: compStore, Client: queueClient, Logger: logger,
 	}
 	resumenHandler := &queue.ResumenHandler{
 		Cfg: cfg, Tenants: tenantManager, Certs: certManager, Motor: mot,
 		Resumenes: resumenesStore, Client: queueClient, Logger: logger,
 	}
+	anulHandler := &queue.AnulHandler{
+		Cfg: cfg, Tenants: tenantManager, Certs: certManager, Motor: mot,
+		Anulaciones: anulacionesStore, Comprobantes: compStore,
+		Client: queueClient, Logger: logger,
+	}
 	queueServer := queue.NewServer(cfg.RedisAddr, 5, logger)
-	if err := queueServer.Start(emitHandler, resumenHandler); err != nil {
+	if err := queueServer.Start(emitHandler, resumenHandler, anulHandler); err != nil {
 		logger.Error("queue.Start", "err", err)
 		os.Exit(1)
 	}
@@ -149,6 +156,9 @@ func main() {
 	guiasHandler := &httpapi.GuiasHandler{
 		Comprobantes: compStore, Queue: queueClient, Logger: logger,
 	}
+	anulHTTPHandler := &httpapi.AnulacionesHandler{
+		Store: anulacionesStore, Queue: queueClient, Logger: logger,
+	}
 
 	// Status de SUNAT: goroutine que pinga cada 2 minutos los endpoints de
 	// beta y producción. Sirve para mostrar un banner al cajero cuando la
@@ -165,6 +175,7 @@ func main() {
 		Clientes: clientesHandler, Productos: productosHandler,
 		Resumenes: resumenesHandler, Tenant: tenantHandler,
 		SunatStatus: sunatStatusHandler, Guias: guiasHandler,
+		Anulaciones: anulHTTPHandler,
 		MotorPing: func() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()

@@ -123,6 +123,42 @@ func (s *Store) MarcarError(ctx context.Context, tenantID, id uuid.UUID, mensaje
 	return err
 }
 
+// MarcarConsultando guarda el ticket que SUNAT devolvió y pasa el comprobante
+// a 'consultando'. Aplica al flow async de GRE.
+func (s *Store) MarcarConsultando(ctx context.Context, tenantID, id uuid.UUID, ticket string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE comprobantes SET estado='consultando', sunat_ticket=$3, updated_at=now()
+		WHERE tenant_id=$1 AND id=$2
+	`, tenantID, id, ticket)
+	return err
+}
+
+// Ticket devuelve el ticket guardado en el comprobante (vacío si no hay).
+func (s *Store) Ticket(ctx context.Context, tenantID, id uuid.UUID) (string, error) {
+	var t *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT sunat_ticket FROM comprobantes WHERE tenant_id=$1 AND id=$2
+	`, tenantID, id).Scan(&t)
+	if err != nil {
+		return "", err
+	}
+	if t == nil {
+		return "", nil
+	}
+	return *t, nil
+}
+
+// MarcarAnulado se llama cuando una comunicación de baja para este
+// comprobante fue aceptada por SUNAT.
+func (s *Store) MarcarAnulado(ctx context.Context, tenantID, id uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE comprobantes
+		SET anulado=TRUE, anulado_at=now(), estado='anulado', updated_at=now()
+		WHERE tenant_id=$1 AND id=$2
+	`, tenantID, id)
+	return err
+}
+
 // Resultado contiene lo que el motor devuelve después de hablar con SUNAT.
 type Resultado struct {
 	Estado        string
@@ -202,7 +238,9 @@ type Comprobante struct {
 	Estado          string    `json:"estado"`
 	SunatCodigo     string    `json:"sunat_codigo,omitempty"`
 	SunatMensaje    string    `json:"sunat_mensaje,omitempty"`
+	SunatTicket     string    `json:"sunat_ticket,omitempty"`
 	HashCPE         string    `json:"hash_cpe,omitempty"`
+	Anulado         bool      `json:"anulado"`
 	CreatedAt       time.Time `json:"created_at"`
 }
 
@@ -229,7 +267,8 @@ func (s *Store) List(ctx context.Context, f ListFilter) ([]Comprobante, error) {
 		SELECT id, tipo_documento, serie, correlativo, fecha_emision, moneda,
 		       receptor_tipo_doc, receptor_num_doc, receptor_razon, total, igv, estado,
 		       COALESCE(sunat_codigo,''), COALESCE(sunat_mensaje,''),
-		       COALESCE(hash_cpe,''), created_at
+		       COALESCE(sunat_ticket,''), COALESCE(hash_cpe,''),
+		       anulado, created_at
 		FROM comprobantes
 		WHERE tenant_id = $1
 	`
@@ -250,7 +289,8 @@ func (s *Store) List(ctx context.Context, f ListFilter) ([]Comprobante, error) {
 		var fecha time.Time
 		if err := rows.Scan(&c.ID, &c.Tipo, &c.Serie, &c.Correlativo, &fecha, &c.Moneda,
 			&c.ReceptorTipoDoc, &c.ReceptorDoc, &c.ReceptorRazon, &c.Total, &c.IGV, &c.Estado,
-			&c.SunatCodigo, &c.SunatMensaje, &c.HashCPE, &c.CreatedAt); err != nil {
+			&c.SunatCodigo, &c.SunatMensaje, &c.SunatTicket, &c.HashCPE,
+			&c.Anulado, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		c.FechaEmision = fecha.Format("2006-01-02")
@@ -268,12 +308,14 @@ func (s *Store) Get(ctx context.Context, tenantID, id uuid.UUID) (*Detalle, erro
 		SELECT id, tipo_documento, serie, correlativo, fecha_emision, moneda,
 		       receptor_tipo_doc, receptor_num_doc, receptor_razon, total, igv, estado,
 		       COALESCE(sunat_codigo,''), COALESCE(sunat_mensaje,''),
-		       COALESCE(hash_cpe,''), created_at,
+		       COALESCE(sunat_ticket,''), COALESCE(hash_cpe,''),
+		       anulado, created_at,
 		       total_gravado, total_exonerado, total_inafecto, payload
 		FROM comprobantes WHERE tenant_id = $1 AND id = $2
 	`, tenantID, id).Scan(&d.ID, &d.Tipo, &d.Serie, &d.Correlativo, &fecha, &d.Moneda,
 		&d.ReceptorTipoDoc, &d.ReceptorDoc, &d.ReceptorRazon, &d.Total, &d.IGV, &d.Estado,
-		&d.SunatCodigo, &d.SunatMensaje, &d.HashCPE, &d.CreatedAt,
+		&d.SunatCodigo, &d.SunatMensaje, &d.SunatTicket, &d.HashCPE,
+		&d.Anulado, &d.CreatedAt,
 		&d.Gravado, &d.Exonerado, &d.Inafecto, &d.Payload)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
