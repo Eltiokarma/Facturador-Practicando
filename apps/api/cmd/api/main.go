@@ -146,6 +146,9 @@ func main() {
 	tenantHandler := &httpapi.TenantHandler{
 		Tenants: tenantManager, Certs: certManager, Logger: logger,
 	}
+	guiasHandler := &httpapi.GuiasHandler{
+		Comprobantes: compStore, Queue: queueClient, Logger: logger,
+	}
 
 	// Status de SUNAT: goroutine que pinga cada 2 minutos los endpoints de
 	// beta y producción. Sirve para mostrar un banner al cajero cuando la
@@ -161,7 +164,7 @@ func main() {
 		Auth: authHandler, Facturas: facturasHandler, Comprobantes: compHandler,
 		Clientes: clientesHandler, Productos: productosHandler,
 		Resumenes: resumenesHandler, Tenant: tenantHandler,
-		SunatStatus: sunatStatusHandler,
+		SunatStatus: sunatStatusHandler, Guias: guiasHandler,
 		MotorPing: func() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()

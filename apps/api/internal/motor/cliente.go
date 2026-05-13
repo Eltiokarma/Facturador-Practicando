@@ -71,6 +71,39 @@ func (c *Cliente) Emitir(ctx context.Context, req EmitirRequest) (*EmitirRespons
 	return &out, nil
 }
 
+type GuiaRequest struct {
+	Modo   string         `json:"modo"`
+	Tenant map[string]any `json:"tenant"`
+	Guia   map[string]any `json:"guia"`
+}
+
+type GuiaResponse struct {
+	Estado     string `json:"estado"` // "ticket" | "aceptado" | "rechazado" | "error"
+	Ticket     string `json:"ticket,omitempty"`
+	XMLFirmado string `json:"xml_firmado,omitempty"`
+	CDRZip     string `json:"cdr_zip,omitempty"`
+	Codigo     string `json:"codigo,omitempty"`
+	Mensaje    string `json:"mensaje,omitempty"`
+	HashCPE    string `json:"hash_cpe,omitempty"`
+}
+
+func (c *Cliente) Guia(ctx context.Context, req GuiaRequest) (*GuiaResponse, error) {
+	body, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/emitir-guia", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("motor.Guia: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var out GuiaResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("motor.Guia: %w (body=%q)", err, raw)
+	}
+	return &out, nil
+}
+
 type ResumenRequest struct {
 	Modo    string         `json:"modo"`
 	Tenant  map[string]any `json:"tenant"`
@@ -85,8 +118,7 @@ type ResumenResponse struct {
 	Mensaje     string `json:"mensaje,omitempty"`
 }
 
-func (c *Cliente) Resumen(ctx context.Context, req ResumenRequest) (*ResumenResponse, error) {
-	body, _ := json.Marshal(req)
+func (c *Cliente) Resumen(ctx context.Context, req ResumenRequest) (*ResumenResponse, error) {	body, _ := json.Marshal(req)
 	httpReq, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/resumen", bytes.NewReader(body))
 	httpReq.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(httpReq)

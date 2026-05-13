@@ -66,6 +66,12 @@ func (h *EmitHandler) Handle(ctx context.Context, t *asynq.Task) error {
 		return nil
 	}
 
+	// GRE va por endpoint y autenticación distinta (API REST + OAuth2),
+	// y el flow es ticket → consulta.
+	if d.Tipo == "09" {
+		return h.handleGRE(ctx, p, d, ten, log)
+	}
+
 	mat, err := h.Certs.Get(p.TenantID)
 	if err != nil {
 		log.Error("worker: cert no disponible para este tenant", "err", err)

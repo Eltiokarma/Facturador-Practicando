@@ -1,8 +1,15 @@
 import { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../api/client";
+import { ImportCSV } from "../components/ImportCSV";
 import { Producto } from "../types";
 import { Modal } from "./Clientes";
+
+const PLANTILLA_PRODUCTOS_CSV =
+  "codigo,descripcion,unidad,valor_unitario,afectacion_igv\n" +
+  "P001,Café americano,NIU,8.50,10\n" +
+  "P002,Servicio de consultoría,ZZ,150.00,10\n" +
+  ",Frutas surtidas,KGM,5.00,20\n";
 
 const UNIDADES = [
   { value: "NIU", label: "NIU — Unidad (bienes)" },
@@ -25,6 +32,7 @@ export function Productos() {
   const [items, setItems] = useState<Producto[] | null>(null);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Producto | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   async function reload() {
     const params = new URLSearchParams({ limit: "200" });
@@ -59,15 +67,20 @@ export function Productos() {
             Tu catálogo: lo que vendés con precio y unidad. Se autocompletan en la emisión.
           </p>
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => setEditing({
-            descripcion: "", unidad: "NIU",
-            valor_unitario: 0, afectacion_igv: "10",
-          })}
-        >
-          + Nuevo producto
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-ghost" onClick={() => setImportOpen(true)}>
+            Importar CSV
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => setEditing({
+              descripcion: "", unidad: "NIU",
+              valor_unitario: 0, afectacion_igv: "10",
+            })}
+          >
+            + Nuevo producto
+          </button>
+        </div>
       </header>
 
       <div className="card p-4">
@@ -134,6 +147,22 @@ export function Productos() {
             setEditing(null);
             reload();
           }}
+        />
+      )}
+
+      {importOpen && (
+        <ImportCSV
+          path="/api/v1/productos/importar"
+          ejemplo={PLANTILLA_PRODUCTOS_CSV}
+          columnas={[
+            { name: "descripcion", required: true },
+            { name: "valor_unitario", required: true, help: "sin IGV, punto o coma decimal" },
+            { name: "codigo" },
+            { name: "unidad", help: "default NIU. Catálogo SUNAT 03" },
+            { name: "afectacion_igv", help: "default 10 (gravado 18%). 20=exonerado, 30=inafecto" },
+          ]}
+          onClose={() => setImportOpen(false)}
+          onDone={() => reload()}
         />
       )}
     </div>

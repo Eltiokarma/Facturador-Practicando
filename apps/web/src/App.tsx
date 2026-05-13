@@ -12,6 +12,7 @@ import { Resumenes } from "./pages/Resumenes";
 import { ResumenDetalle } from "./pages/ResumenDetalle";
 import { Configuracion } from "./pages/Configuracion";
 import { NuevaEmpresa } from "./pages/NuevaEmpresa";
+import { NuevaGuia } from "./pages/NuevaGuia";
 import { NuevaNota } from "./pages/NuevaNota";
 
 export function App() {
@@ -38,6 +39,7 @@ export function App() {
         <Route path="configuracion" element={<Configuracion />} />
         <Route path="empresas/nueva" element={<NuevaEmpresa />} />
         <Route path="notas/:tipo" element={<NuevaNota />} />
+        <Route path="guias/nueva" element={<NuevaGuia />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

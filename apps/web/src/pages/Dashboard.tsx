@@ -131,6 +131,7 @@ export function labelTipo(t: string): string {
     case "03": return "Boleta";
     case "07": return "N. Crédito";
     case "08": return "N. Débito";
+    case "09": return "Guía";
     default: return t;
   }
 }

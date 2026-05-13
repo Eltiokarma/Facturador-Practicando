@@ -76,6 +76,9 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 - [x] Subir certificado .p12 desde la UI por tenant (un cert por RUC, passphrase cifrada con AES-256-GCM en DB, recarga automática al reiniciar el container).
 - [x] Notas de crédito y notas de débito, con motivo SUNAT (catálogos 09/10), referencia al comprobante original, ítems prellenados.
 - [x] Modo DEMO por tenant: emisiones simuladas localmente sin tocar SUNAT, banner permanente en la UI, watermark "DEMO" en los PDFs. Permite explorar el sistema sin tener cert ni credenciales reales.
+- [x] Detección de caídas de SUNAT: ping periódico a los endpoints, banner global en la UI cuando está down, botón "Reintentar ahora" en comprobantes en estado error.
+- [x] Guía de Remisión Electrónica (GRE — tipo 09): modelo completo con destinatario, puntos de partida/llegada, transportista, peso, ítems. Validaciones SUNAT (ubigeo, placa, modalidad pública/privada). En DEMO simulado; en producción requiere credenciales API GRE de SUNAT (OAuth2).
+- [x] Importación masiva desde CSV: clientes y productos. Validación fila por fila, plantilla descargable, resumen de errores.
 - [ ] Invitar usuarios a tu tenant (compartir acceso con contador / cajero).
 - [ ] PWA offline-first con cola local en IndexedDB.
 - [ ] GRE (obligatoria desde julio 2026).
@@ -111,6 +114,9 @@ Detalles paso a paso en `docs/instalacion.md`. Manual didáctico (30 pág.) en `
 | POST | `/api/v1/tenants` | JWT | crear empresa nueva (te volvés dueño) |
 | GET  | `/api/v1/me/tenants` | JWT | empresas del usuario |
 | POST | `/api/v1/auth/switch-tenant` | JWT | cambiar de empresa (emite nuevos tokens) |
+| POST | `/api/v1/guias` | JWT | emitir guía de remisión (tipo 09) |
+| POST | `/api/v1/clientes/importar` (multipart) | JWT | importar clientes desde CSV |
+| POST | `/api/v1/productos/importar` (multipart) | JWT | importar productos desde CSV |
 
 ## Arquitectura de emisión
 

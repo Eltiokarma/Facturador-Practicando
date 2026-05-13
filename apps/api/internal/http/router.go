@@ -26,6 +26,7 @@ type Deps struct {
 	Resumenes    *ResumenesHandler
 	Tenant       *TenantHandler
 	SunatStatus  *SunatStatusHandler
+	Guias        *GuiasHandler
 	MotorPing    func() error
 }
 
@@ -78,6 +79,9 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/notas-credito", d.Facturas.Emitir)
 				r.Post("/notas-debito", d.Facturas.Emitir)
 			}
+			if d.Guias != nil {
+				r.Post("/guias", d.Guias.Emitir)
+			}
 			if d.Comprobantes != nil {
 				r.Get("/comprobantes", d.Comprobantes.List)
 				r.Get("/comprobantes/{id}", d.Comprobantes.Get)
@@ -91,12 +95,14 @@ func NewRouter(d Deps) http.Handler {
 				r.Post("/clientes", d.Clientes.Upsert)
 				r.Put("/clientes/{id}", d.Clientes.Upsert)
 				r.Delete("/clientes/{id}", d.Clientes.Delete)
+				r.Post("/clientes/importar", d.Clientes.ImportarCSV)
 			}
 			if d.Productos != nil {
 				r.Get("/productos", d.Productos.List)
 				r.Post("/productos", d.Productos.Upsert)
 				r.Put("/productos/{id}", d.Productos.Upsert)
 				r.Delete("/productos/{id}", d.Productos.Delete)
+				r.Post("/productos/importar", d.Productos.ImportarCSV)
 			}
 			if d.Resumenes != nil {
 				r.Get("/resumenes", d.Resumenes.List)

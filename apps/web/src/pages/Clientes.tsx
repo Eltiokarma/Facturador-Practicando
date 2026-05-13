@@ -1,7 +1,13 @@
 import { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../api/client";
+import { ImportCSV } from "../components/ImportCSV";
 import { Cliente } from "../types";
+
+const PLANTILLA_CLIENTES_CSV =
+  "tipo_doc,num_doc,razon_social,direccion,email,telefono\n" +
+  "6,20123456789,EJEMPLO SAC,AV. SIEMPRE VIVA 123,contacto@ejemplo.pe,999888777\n" +
+  "1,12345678,JUAN PEREZ,,juan@example.com,\n";
 
 const TIPOS_DOC = [
   { value: "6", label: "RUC" },
@@ -19,6 +25,7 @@ export function Clientes() {
   const [items, setItems] = useState<Cliente[] | null>(null);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<Cliente | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   async function reload() {
     const params = new URLSearchParams({ limit: "200" });
@@ -53,9 +60,14 @@ export function Clientes() {
             Acá guardás los datos para no escribirlos cada vez que emitas.
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setEditing({ tipo_doc: "6", num_doc: "", razon_social: "" })}>
-          + Nuevo cliente
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-ghost" onClick={() => setImportOpen(true)}>
+            Importar CSV
+          </button>
+          <button className="btn-primary" onClick={() => setEditing({ tipo_doc: "6", num_doc: "", razon_social: "" })}>
+            + Nuevo cliente
+          </button>
+        </div>
       </header>
 
       <div className="card p-4">
@@ -130,6 +142,23 @@ export function Clientes() {
             setEditing(null);
             reload();
           }}
+        />
+      )}
+
+      {importOpen && (
+        <ImportCSV
+          path="/api/v1/clientes/importar"
+          ejemplo={PLANTILLA_CLIENTES_CSV}
+          columnas={[
+            { name: "tipo_doc", required: true, help: "6=RUC, 1=DNI, 4=CE, 7=Pasaporte" },
+            { name: "num_doc", required: true },
+            { name: "razon_social", required: true },
+            { name: "direccion" },
+            { name: "email" },
+            { name: "telefono" },
+          ]}
+          onClose={() => setImportOpen(false)}
+          onDone={() => reload()}
         />
       )}
     </div>
