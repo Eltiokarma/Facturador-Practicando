@@ -3,7 +3,13 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { api, apiBlob } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { detectCapability, getSavedPrinter, printBytes } from "../services/printer";
+import { notify } from "../services/notifications";
+import {
+  detectCapability,
+  getPrinterSettings,
+  getSavedPrinter,
+  printBytes,
+} from "../services/printer";
 import { buildTicket } from "../services/ticket-template";
 import { ComprobanteDetalleT } from "../types";
 import { Modal } from "./Clientes";
@@ -21,6 +27,7 @@ export function ComprobanteDetalle() {
   const [printing, setPrinting] = useState(false);
   const { tenants, user } = useAuth();
   const lastEstado = useRef<string | null>(null);
+  const autoPrintedRef = useRef(false); // que no se imprima dos veces
 
   useEffect(() => {
     if (!id) return;
@@ -33,12 +40,29 @@ export function ComprobanteDetalle() {
         setC(data);
         // Notificar cuando llega la respuesta final de SUNAT
         if (lastEstado.current && ESTADOS_EN_PROCESO.has(lastEstado.current)) {
+          const numero = `${data.serie}-${data.correlativo}`;
           if (data.estado === "aceptado") {
-            toast.success(`SUNAT aceptó ${data.serie}-${data.correlativo}`);
+            toast.success(`SUNAT aceptó ${numero}`);
+            notify("Comprobante aceptado", `${numero} fue aceptado por SUNAT`);
           } else if (data.estado === "aceptado_con_obs") {
             toast.warning(`Aceptado con observaciones: ${data.sunat_mensaje || ""}`);
+            notify("Aceptado con observaciones", `${numero}: ${data.sunat_mensaje || ""}`);
           } else if (data.estado === "rechazado") {
             toast.error(`SUNAT rechazó: ${data.sunat_codigo} ${data.sunat_mensaje || ""}`);
+            notify("SUNAT rechazó", `${numero}: ${data.sunat_mensaje || ""}`);
+          }
+          // Auto-imprimir si está activado y SUNAT aceptó
+          if (
+            !autoPrintedRef.current &&
+            (data.estado === "aceptado" || data.estado === "aceptado_con_obs") &&
+            getPrinterSettings().auto &&
+            getSavedPrinter()
+          ) {
+            autoPrintedRef.current = true;
+            // setC primero para que imprimirTicket lea el comprobante actualizado
+            setC(data);
+            // Diferir un tick para que el setState surta efecto
+            setTimeout(() => { void imprimirTicket(true); }, 50);
           }
         }
         lastEstado.current = data.estado;
@@ -93,14 +117,17 @@ export function ComprobanteDetalle() {
     }
   }
 
-  async function imprimirTicket() {
-    if (!c) return;
+  async function imprimirTicket(silencioso = false): Promise<boolean> {
+    if (!c) return false;
     const printer = getSavedPrinter();
     if (!printer) {
-      toast.error("Primero emparejá una impresora en Configuración → Impresora.");
-      return;
+      if (!silencioso) {
+        toast.error("Primero emparejá una impresora en Configuración → Impresora.");
+      }
+      return false;
     }
     const tenant = tenants.find((t) => t.id === user?.tenant_id);
+    const { cols } = getPrinterSettings();
     setPrinting(true);
     try {
       const bytes = buildTicket(
@@ -109,12 +136,15 @@ export function ComprobanteDetalle() {
           razon_social: tenant?.razon_social || "",
         },
         c,
-        { demoWatermark: !!tenant?.demo_mode },
+        { cols, demoWatermark: !!tenant?.demo_mode },
       );
       await printBytes(bytes);
-      toast.success("Ticket enviado a la impresora");
+      if (!silencioso) toast.success("Ticket enviado a la impresora");
+      return true;
     } catch (e: any) {
-      toast.error(e?.message || "No se pudo imprimir");
+      if (!silencioso) toast.error(e?.message || "No se pudo imprimir");
+      else toast.error("Auto-impresión falló: " + (e?.message || "error"));
+      return false;
     } finally {
       setPrinting(false);
     }

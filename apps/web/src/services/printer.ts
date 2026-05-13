@@ -13,6 +13,27 @@
 import { Capacitor } from "@capacitor/core";
 
 const LS_FAV = "facturador.printer.device";
+const LS_AUTO = "facturador.printer.auto";
+const LS_COLS = "facturador.printer.cols";
+
+/** Configuración del cajero respecto a la impresora. */
+export type PrinterSettings = {
+  /** Si true, al recibir 'aceptado' de SUNAT se imprime automáticamente. */
+  auto: boolean;
+  /** Ancho del papel en caracteres. 42 = 80mm (común), 32 = 58mm. */
+  cols: 32 | 42;
+};
+
+export function getPrinterSettings(): PrinterSettings {
+  const auto = localStorage.getItem(LS_AUTO) === "1";
+  const cols = localStorage.getItem(LS_COLS) === "32" ? 32 : 42;
+  return { auto, cols };
+}
+
+export function savePrinterSettings(s: PrinterSettings): void {
+  localStorage.setItem(LS_AUTO, s.auto ? "1" : "0");
+  localStorage.setItem(LS_COLS, String(s.cols));
+}
 
 // UUID estándar de servicio de impresoras térmicas ESC/POS (la mayoría
 // de fabricantes chinos usan este servicio "Serial Port Profile" sobre BLE).

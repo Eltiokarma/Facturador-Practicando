@@ -4,10 +4,13 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import {
   PrinterDevice,
+  PrinterSettings,
   detectCapability,
+  getPrinterSettings,
   getSavedPrinter,
   pickPrinter,
   printBytes,
+  savePrinterSettings,
   saveSavedPrinter,
 } from "../services/printer";
 import { EscPos } from "../services/escpos";
@@ -349,8 +352,15 @@ function GRESection({ tenant: t, esDueno }: { tenant: TenantConfig; esDueno: boo
 
 function PrinterSection() {
   const [device, setDevice] = useState<PrinterDevice | null>(getSavedPrinter());
+  const [settings, setSettings] = useState<PrinterSettings>(getPrinterSettings());
   const [busy, setBusy] = useState(false);
   const cap = detectCapability();
+
+  function updateSettings(patch: Partial<PrinterSettings>) {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    savePrinterSettings(next);
+  }
 
   async function emparejar() {
     setBusy(true);
@@ -376,7 +386,7 @@ function PrinterSection() {
   async function prueba() {
     setBusy(true);
     try {
-      const p = new EscPos(42).init()
+      const p = new EscPos(settings.cols).init()
         .bold(true).size(2, 2).center("PRUEBA DE IMPRESION").size(1, 1).bold(false)
         .feed(1)
         .center("Facturador Self-Hosted")
@@ -468,6 +478,56 @@ function PrinterSection() {
           >
             Imprimir prueba
           </button>
+        </div>
+
+        <div className="pt-4 mt-2 border-t border-slate-100 space-y-3">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={settings.auto}
+              onChange={(e) => updateSettings({ auto: e.target.checked })}
+            />
+            <span>
+              <span className="text-sm font-medium text-slate-900 block">
+                Imprimir automáticamente al aceptar
+              </span>
+              <span className="text-xs text-slate-500">
+                Apenas SUNAT confirma el comprobante, el ticket sale solo. El
+                cajero no necesita tocar nada más.
+              </span>
+            </span>
+          </label>
+
+          <div>
+            <label className="label">Ancho del papel</label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => updateSettings({ cols: 42 })}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  settings.cols === 42
+                    ? "border-brand-500 bg-brand-50 text-brand-700"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                80 mm (común)
+                <div className="text-xs text-slate-500 font-normal">42 caracteres</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => updateSettings({ cols: 32 })}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  settings.cols === 32
+                    ? "border-brand-500 bg-brand-50 text-brand-700"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                58 mm (compacta)
+                <div className="text-xs text-slate-500 font-normal">32 caracteres</div>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
